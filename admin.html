@@ -65,7 +65,7 @@
                         </div>
                         <div class="flex flex-col gap-2">
                             <label class="font-medium text-gray-700 text-sm">App Title:</label>
-                            <input type="text" id="app-title-setting" value="Webapp Sikho" class="w-full p-2 border rounded-md bg-gray-50">
+                            <input type="text" id="app-title-setting" value="XBI TECH" class="w-full p-2 border rounded-md bg-gray-50">
                         </div>
                         <div class="flex gap-4">
                             <div class="flex-1 flex flex-col gap-2">
@@ -299,7 +299,7 @@ async function loadAdminSettings() {
     const { data } = await sb.from('settings').select('*').eq('id', 'general').single();
     if (data) {
         document.getElementById('timer-duration-setting').value = data.timer_duration ?? 10;
-        document.getElementById('app-title-setting').value = data.app_title || "Webapp Sikho";
+        document.getElementById('app-title-setting').value = data.app_title || "XBI TECH";
         document.getElementById('theme-color-from').value = data.theme_color_from || "#4f46e5";
         document.getElementById('theme-color-to').value = data.theme_color_to || "#7e22ce";
     }
