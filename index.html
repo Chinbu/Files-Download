@@ -7,11 +7,19 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script>tailwind.config = { darkMode: 'class', theme: { extend: {} } }</script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- ✅ Telegram WebApp SDK — MUST load BEFORE Monetag -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+    <!-- ✅ Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-    <!-- MONETAG TELEGRAM MINI APP SDK -->
+    <!-- ✅ Monetag TMA SDK -->
     <script src='//libtl.com/sdk.js' data-zone='12233684' data-sdk='show_12233684'></script>
+
+    <!-- 🐞 ERUDA: Mobile debug console (production me hata dena) -->
+    <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+    <script>eruda.init({ useShadowDom: true });</script>
 
     <style>
         .hide-scrollbar::-webkit-scrollbar { display: none; }
@@ -193,46 +201,25 @@ let currentFileId = null;
 let userRating = 0;
 let slideInterval = null;
 
+// ---------- TELEGRAM INIT ----------
+// Ready + Expand MUST run before any Monetag ad call
+let tg = null;
 let tgUser = { id: null, name: "Guest User" };
-
 try {
     if (window.Telegram && window.Telegram.WebApp) {
-        const tg = window.Telegram.WebApp;
-        tg.expand();
+        tg = window.Telegram.WebApp;
         tg.ready();
-        
+        tg.expand();
+        tg.disableVerticalSwipes?.();
         if (tg.initDataUnsafe?.user) {
             tgUser.id = tg.initDataUnsafe.user.id.toString();
-            tgUser.name = tg.initDataUnsafe.user.first_name || tg.initDataUnsafe.user.username;
+            tgUser.name = tg.initDataUnsafe.user.first_name || tg.initDataUnsafe.user.username || "User";
         }
-
-        // ==========================================
-        // 🔥 TELEGRAM MINI APP MOBILE ADS FIX 🔥
-        // ==========================================
-        // Telegram Mobile block window.open and blank targets which Ad networks rely on.
-        // We intercept these requests and force Telegram to use `openLink()`.
-
-        const originalWindowOpen = window.open;
-        window.open = function(url, target, features) {
-            try {
-                if (url) tg.openLink(url.toString());
-                return { closed: false, focus: function(){}, close: function(){} }; 
-            } catch (e) {
-                return originalWindowOpen(url, target, features);
-            }
-        };
-        
-        document.addEventListener('click', function(e) {
-            const a = e.target.closest('a');
-            // Agar link naye tab mein khulna chahta hai, to usko direct openLink se bhejenge
-            if (a && a.href && a.target === '_blank') {
-                e.preventDefault();
-                tg.openLink(a.href);
-            }
-        }, true);
-        // ==========================================
+        console.log('[Telegram] WebApp initialized. User:', tgUser);
+    } else {
+        console.warn('[Telegram] WebApp SDK not found — running outside Telegram?');
     }
-} catch (e) { console.error("Telegram Error", e); }
+} catch (e) { console.error("[Telegram] Init error:", e); }
 
 if (!tgUser.id) {
     let storedId = localStorage.getItem('guestUserId');
@@ -244,6 +231,7 @@ if (!tgUser.id) {
 }
 document.getElementById('user-display-name').textContent = tgUser.name;
 
+// ---------- THEME ----------
 window.toggleDarkMode = () => {
     document.documentElement.classList.toggle('dark');
     const isDark = document.documentElement.classList.contains('dark');
@@ -258,6 +246,7 @@ if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && w
     document.getElementById('theme-icon').className = 'fas fa-moon text-white';
 }
 
+// ---------- TRANSLATIONS ----------
 const translations = {
     en: { main_title:"Webapp Sikho", main_subtitle:"Watch Ads, Unlock & Download!", search_placeholder:"Search files...", available_files:"Available Files", unlock_btn:"Watch Ad to Unlock", loading_ad:"Loading Ad...", wait_text:"Please wait {cd}s...", progress_text:"Progress: {count}/{req} Ads watched", unlocked_msg:"Unlocked Successfully!", ad_failed:"Ad Failed. Retry", download_default:"Download", nav_home:"Home", nav_history:"History", history_title:"Downloads", history_subtitle:"Files you have unlocked", empty_history:"No files unlocked yet.", screenshots:"Screenshots", about_app:"About this file", reviews:"Ratings & Reviews", rate_this:"Rate this file", submit_review:"Submit Review", update_review:"Update Review", no_reviews:"No reviews yet. Be the first to review!" },
     hi: { main_title:"वेबऐप सीखो", main_subtitle:"विज्ञापन देखें और मुफ्त डाउनलोड करें!", search_placeholder:"फाइलें खोजें...", available_files:"उपलब्ध फाइलें", unlock_btn:"अनलॉक के लिए विज्ञापन देखें", loading_ad:"विज्ञापन लोड हो रहा है...", wait_text:"कृपया रुकें {cd}s...", progress_text:"प्रगति: {count}/{req} विज्ञापन देखे गए", unlocked_msg:"फाइल अनलॉक हो गई!", ad_failed:"विफल। पुनः प्रयास करें", download_default:"डाउनलोड", nav_home:"होम", nav_history:"इतिहास", history_title:"डाउनलोड्स", history_subtitle:"आपकी अनलॉक की गई फाइलें", empty_history:"अभी तक कोई फाइल अनलॉक नहीं की गई।", screenshots:"स्क्रीनशॉट्स", about_app:"इस फाइल के बारे में", reviews:"रेटिंग और समीक्षाएं", rate_this:"इस फाइल को रेट करें", submit_review:"समीक्षा जमा करें", update_review:"समीक्षा अपडेट करें", no_reviews:"अभी तक कोई समीक्षा नहीं। पहली समीक्षा लिखें!" },
@@ -294,6 +283,7 @@ function applyLanguage(lang) {
     document.getElementById('language-modal').classList.add('hidden');
 }
 
+// ---------- SKELETON ----------
 function showSkeletonLoader() {
     const grid = document.getElementById('files-grid');
     grid.innerHTML = '';
@@ -310,6 +300,7 @@ function showSkeletonLoader() {
     }
 }
 
+// ---------- LOAD DATA ----------
 async function loadData() {
     showSkeletonLoader();
     try {
@@ -380,6 +371,7 @@ async function loadData() {
     } catch (e) { console.error("Files error", e); }
 }
 
+// ---------- RENDER FILES ----------
 function renderFiles() {
     const grid = document.getElementById('files-grid');
     grid.innerHTML = '';
@@ -406,6 +398,7 @@ function renderFiles() {
     });
 }
 
+// ---------- DETAILS ----------
 window.openDetails = (id) => {
     currentFileId = id;
     const file = allFiles.find(f => f.id === id);
@@ -458,6 +451,7 @@ window.closeImageViewer = () => {
 };
 document.getElementById('image-viewer').addEventListener('click', e => { if (e.target.id === 'image-viewer') window.closeImageViewer(); });
 
+// ---------- REVIEWS ----------
 function renderReviews(file) {
     const list = document.getElementById('reviews-list');
     const avgLabel = document.getElementById('detail-rating-avg');
@@ -561,6 +555,34 @@ document.getElementById('submit-review-btn').addEventListener('click', async () 
     } catch (e) { console.error("Save review error", e); showToast("DB save failed"); }
 });
 
+// ==========================================
+// ========== MONETAG AD (FIXED) ============
+// ==========================================
+async function showMonetagAd(ymid) {
+    // Ensure Telegram WebApp is ready BEFORE ad call
+    // (Monetag SDK needs this to detect safe area & send {telegram_id})
+    if (window.Telegram && window.Telegram.WebApp) {
+        try {
+            window.Telegram.WebApp.ready();
+        } catch (e) { console.warn('[Telegram] ready() error:', e); }
+    }
+
+    const fnName = `show_${MONETAG_ZONE_ID}`;
+    const fn = window[fnName];
+
+    if (typeof fn !== 'function') {
+        console.error(`[Monetag] SDK function ${fnName} not found on window.`);
+        console.log('[Monetag] Available window.show_* functions:', 
+            Object.keys(window).filter(k => k.startsWith('show_'))
+        );
+        throw new Error(`Monetag SDK not loaded (missing ${fnName}).`);
+    }
+
+    console.log('[Monetag] Requesting ad. ymid =', ymid);
+    await fn({ ymid });
+    console.log('[Monetag] Ad completed successfully.');
+}
+
 function updateDetailButtonState(file) {
     const req = parseInt(file.required_ads) || 5;
     const count = parseInt(localStorage.getItem(`adCount_${file.id}`)) || 0;
@@ -581,42 +603,20 @@ function updateDetailButtonState(file) {
     }
 }
 
-// ====================================================
-// 🔥 STRICT SYNCHRONOUS AD FUNCTION 🔥
-// Is function se 'async' keyword hata diya hai taaki browser 
-// ko manual click ka pata chale.
-// ====================================================
-window.unlockFile = function(id, req) {
+window.unlockFile = async (id, req) => {
     const btn = document.getElementById('unlock-action-btn');
     if (!btn || btn.disabled) return;
-
-    const fnName = `show_${MONETAG_ZONE_ID}`;
-    const showAdSDK = window[fnName];
-
-    if (typeof showAdSDK !== 'function') {
-        showToast("Ad system loading, please wait...");
-        return;
-    }
-
-    let adPromise;
-    try {
-        // Bina koi delay kiye SDK ko directly invoke karenge
-        adPromise = showAdSDK({ ymid: tgUser.id });
-    } catch (err) {
-        console.error("Ad Func error", err);
-        adPromise = Promise.reject(err);
-    }
-
-    // Ab safely button ki UI update karenge
     btn.disabled = true;
     btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span>${getText('loading_ad')}</span>`;
+    try {
+        // ✅ FIX: ymid = unique EVENT id (NOT Telegram User ID)
+        // Telegram user ID SDK khud {telegram_id} macro mein bhejta hai
+        const uniqueEventId = `unlock_${id}_${Date.now()}`;
+        await showMonetagAd(uniqueEventId);
 
-    // Promise resolve hone ke baad baki ka logic run hoga
-    Promise.resolve(adPromise).then(async () => {
         let count = parseInt(localStorage.getItem(`adCount_${id}`)) || 0;
         count++;
         localStorage.setItem(`adCount_${id}`, count);
-        
         if (count >= req) {
             showToast(getText('unlocked_msg'));
             saveToHistory(id);
@@ -632,30 +632,24 @@ window.unlockFile = function(id, req) {
             showToast(getText('progress_text', { count, req }));
             let cd = timerDuration;
             const int = setInterval(() => {
-                const activeBtn = document.getElementById('unlock-action-btn');
-                if (!activeBtn) {
-                    clearInterval(int);
-                    return;
-                }
-                activeBtn.innerHTML = `<i class="fas fa-clock"></i> <span>${getText('wait_text', { cd })}</span>`;
+                btn.innerHTML = `<i class="fas fa-clock"></i> <span>${getText('wait_text', { cd })}</span>`;
                 cd--;
                 if (cd < 0) {
                     clearInterval(int);
-                    activeBtn.disabled = false;
-                    activeBtn.innerHTML = `<i class="fas fa-lock"></i> <span>${getText('unlock_btn')} (${count}/${req})</span>`;
+                    btn.disabled = false;
+                    btn.innerHTML = `<i class="fas fa-lock"></i> <span>${getText('unlock_btn')} (${count}/${req})</span>`;
                 }
             }, 1000);
         }
-    }).catch(err => {
-        console.error("Monetag ad error", err);
-        const activeBtn = document.getElementById('unlock-action-btn');
-        if (activeBtn) {
-            activeBtn.disabled = false;
-            activeBtn.innerHTML = `<i class="fas fa-exclamation-triangle"></i> <span>${getText('ad_failed')}</span>`;
-        }
-    });
+    } catch (e) {
+        console.error("Monetag ad error:", e);
+        showToast((e && e.message) ? e.message : getText('ad_failed'));
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fas fa-exclamation-triangle"></i> <span>${getText('ad_failed')}</span>`;
+    }
 };
 
+// ---------- HISTORY ----------
 function saveToHistory(fileId) {
     let history = JSON.parse(localStorage.getItem('downloadHistory') || '[]');
     if (!history.includes(fileId)) { history.push(fileId); localStorage.setItem('downloadHistory', JSON.stringify(history)); }
@@ -692,6 +686,7 @@ function renderHistory() {
     }
 }
 
+// ---------- TABS ----------
 window.switchTab = (tab) => {
     const homeView = document.getElementById('home-view');
     const historyView = document.getElementById('history-view');
@@ -709,6 +704,7 @@ window.switchTab = (tab) => {
     }
 };
 
+// ---------- TOAST ----------
 function showToast(msg) {
     const t = document.getElementById('toast');
     document.getElementById('toast-message').textContent = msg;
@@ -717,6 +713,7 @@ function showToast(msg) {
     setTimeout(() => { t.classList.add('-translate-y-24', 'opacity-0'); t.classList.remove('translate-y-0', 'opacity-100'); }, 3000);
 }
 
+// ---------- INIT ----------
 document.getElementById('searchInput').addEventListener('input', renderFiles);
 document.querySelectorAll('.lang-btn').forEach(btn => btn.addEventListener('click', () => applyLanguage(btn.dataset.lang)));
 
@@ -725,6 +722,16 @@ async function init() {
         await sb.auth.signInAnonymously();
     } catch (e) { console.warn("Anonymous auth failed (check Auth settings)", e); }
     await loadData();
+
+    // Log Monetag SDK availability after init
+    setTimeout(() => {
+        const fnName = `show_${MONETAG_ZONE_ID}`;
+        if (typeof window[fnName] === 'function') {
+            console.log(`[Monetag] SDK ready: ${fnName} available ✅`);
+        } else {
+            console.error(`[Monetag] SDK missing: ${fnName} NOT found ❌ — check script tag / zone ID / domain approval`);
+        }
+    }, 1500);
 }
 
 const savedLang = localStorage.getItem('userLanguage');
