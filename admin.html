@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Supabase</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-100 font-sans pb-10">
+<div id="admin-panel" class="container mx-auto p-4 max-w-6xl">
+    <header class="bg-indigo-600 text-white p-4 rounded-lg shadow-md mb-6 flex justify-between items-center">
+        <h1 class="text-2xl md:text-3xl font-bold"><i class="fas fa-user-shield mr-2"></i> Admin Panel</h1>
+        <button id="sign-out-btn" class="hidden bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded transition-colors shadow">
+            <i class="fas fa-sign-out-alt mr-1"></i> Sign Out
+        </button>
+    </header>
+
+    <div id="admin-login" class="bg-white p-8 rounded-lg shadow-md max-w-md mx-auto text-center mt-20">
+        <div class="bg-indigo-100 text-indigo-600 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl">
+            <i class="fas fa-lock"></i>
+        </div>
+        <h2 class="text-2xl font-bold mb-4 text-gray-800">Admin Login</h2>
+        <p class="text-gray-500 mb-8 text-sm">Authorized Google account se sign in karein.</p>
+        <button id="google-login-btn" class="bg-white border border-gray-300 text-gray-700 font-semibold py-3 px-6 rounded-lg shadow-sm hover:bg-gray-50 transition duration-300 flex items-center justify-center w-full">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" class="w-6 h-6 mr-3">
+            Google Se Sign in Karein
+        </button>
+    </div>
+
+    <div id="access-denied" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative max-w-md mx-auto text-center mt-10" role="alert">
+        <strong class="font-bold block mb-1 text-lg"><i class="fas fa-ban"></i> Access Denied!</strong>
+        <span class="block sm:inline">Yeh Google account authorized nahi hai. Sirf <b>ingt6359@gmail.com</b> allowed hai.</span>
+    </div>
+
+    <div id="admin-content" class="hidden">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div class="bg-white p-6 rounded-lg shadow-md border-l-4 border-indigo-500 flex items-center justify-between">
+                <div><p class="text-sm text-gray-500 font-bold uppercase">Total Files</p><h3 id="stat-total-files" class="text-3xl font-extrabold text-gray-800 mt-1">0</h3></div>
+                <i class="fas fa-file-alt text-4xl text-indigo-100"></i>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-md border-l-4 border-green-500 flex items-center justify-between">
+                <div><p class="text-sm text-gray-500 font-bold uppercase">Total Downloads</p><h3 id="stat-total-downloads" class="text-3xl font-extrabold text-gray-800 mt-1">0</h3></div>
+                <i class="fas fa-download text-4xl text-green-100"></i>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-md border-l-4 border-yellow-500 flex items-center justify-between">
+                <div><p class="text-sm text-gray-500 font-bold uppercase">Total Reviews</p><h3 id="stat-total-reviews" class="text-3xl font-extrabold text-gray-800 mt-1">0</h3></div>
+                <i class="fas fa-star text-4xl text-yellow-100"></i>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-md border-l-4 border-blue-500 flex items-center justify-between">
+                <div><p class="text-sm text-gray-500 font-bold uppercase">Active Users</p><h3 id="stat-total-users" class="text-3xl font-extrabold text-gray-800 mt-1">0</h3><p class="text-[10px] text-gray-400">Based on reviews</p></div>
+                <i class="fas fa-users text-4xl text-blue-100"></i>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+            <div class="space-y-8 lg:col-span-1">
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2"><i class="fas fa-cog text-gray-500 mr-2"></i> General Settings</h2>
+                    <div class="space-y-4">
+                        <div class="flex flex-col gap-2">
+                            <label class="font-medium text-gray-700 text-sm">Wait Timer (seconds):</label>
+                            <input type="number" id="timer-duration-setting" value="10" min="0" class="w-full p-2 border rounded-md bg-gray-50">
+                        </div>
+                        <div class="flex flex-col gap-2">
+                            <label class="font-medium text-gray-700 text-sm">App Title:</label>
+                            <input type="text" id="app-title-setting" value="Webapp Sikho" class="w-full p-2 border rounded-md bg-gray-50">
+                        </div>
+                        <div class="flex gap-4">
+                            <div class="flex-1 flex flex-col gap-2">
+                                <label class="font-medium text-gray-700 text-sm">Theme Color 1:</label>
+                                <input type="color" id="theme-color-from" value="#4f46e5" class="w-full h-10 p-1 border rounded-md cursor-pointer">
+                            </div>
+                            <div class="flex-1 flex flex-col gap-2">
+                                <label class="font-medium text-gray-700 text-sm">Theme Color 2:</label>
+                                <input type="color" id="theme-color-to" value="#7e22ce" class="w-full h-10 p-1 border rounded-md cursor-pointer">
+                            </div>
+                        </div>
+                        <button id="save-settings-btn" class="w-full bg-indigo-500 text-white px-6 py-2 rounded-md hover:bg-indigo-600 font-semibold flex items-center justify-center gap-2">
+                            <i class="fas fa-save"></i> Save Settings
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2"><i class="fas fa-ad text-gray-500 mr-2"></i> Manage Banner Ads</h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-sm font-medium text-gray-700 block mb-1">Ad Slot 1 (Header):</label>
+                            <textarea id="ad-slot-1" rows="3" placeholder="Ad code..." class="w-full p-2 border rounded-md font-mono text-xs bg-gray-50"></textarea>
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium text-gray-700 block mb-1">Ad Slot 2 (Slider):</label>
+                            <textarea id="ad-slot-2" rows="3" placeholder="Ad code..." class="w-full p-2 border rounded-md font-mono text-xs bg-gray-50"></textarea>
+                        </div>
+                        <button id="save-ads-btn" class="w-full bg-teal-500 text-white px-6 py-2 rounded-md hover:bg-teal-600 font-semibold flex items-center justify-center gap-2">
+                            <i class="fas fa-save"></i> Save Ad Codes
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-2 space-y-8">
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2"><i class="fas fa-images text-gray-500 mr-2"></i> Manage Sliders</h2>
+                    <div class="flex flex-col md:flex-row gap-3">
+                        <input type="url" id="slider-image-url" placeholder="Slider Image URL" class="flex-1 p-2 border rounded-md text-sm">
+                        <input type="url" id="slider-link-url" placeholder="Destination Link (Optional)" class="flex-1 p-2 border rounded-md text-sm">
+                        <button id="add-slider-btn" class="bg-green-500 text-white px-6 py-2 rounded-md hover:bg-green-600 font-semibold flex items-center justify-center gap-2">
+                            <i class="fas fa-plus"></i> Add
+                        </button>
+                    </div>
+                    <div id="slider-list" class="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"></div>
+                </div>
+
+                <div class="bg-white p-6 rounded-lg shadow-md border border-indigo-100">
+                    <h2 class="text-xl font-semibold text-indigo-800 mb-4 border-b border-indigo-100 pb-2"><i class="fas fa-upload mr-2"></i> Add New App/File</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div class="space-y-3">
+                            <input type="text" id="file-title" placeholder="App/File Title" class="w-full p-2 border rounded-md">
+                            <div class="flex gap-3">
+                                <input type="number" id="file-ad-count" placeholder="Ads to Unlock" value="5" min="1" class="w-1/3 p-2 border rounded-md">
+                                <input type="url" id="file-thumbnail-url" placeholder="Square Thumbnail URL" class="w-2/3 p-2 border rounded-md">
+                            </div>
+                            <textarea id="file-description" placeholder="App Description" class="w-full p-2 border rounded-md h-24"></textarea>
+                        </div>
+                        <div class="space-y-3 bg-gray-50 p-3 rounded-md border">
+                            <p class="text-xs font-bold text-gray-500 uppercase mb-1">Downloads & Screenshots</p>
+                            <textarea id="file-screenshots" placeholder="Screenshot URLs (Comma se alag)" class="w-full p-2 border rounded-md h-16 text-sm font-mono"></textarea>
+                            <div class="flex gap-2">
+                                <input type="text" id="file-btn-name1" placeholder="Btn 1 Text" class="w-1/3 p-2 border rounded-md text-sm">
+                                <input type="url" id="file-download-url" placeholder="Main Download URL (Required)" class="w-2/3 p-2 border rounded-md text-sm">
+                            </div>
+                            <div class="flex gap-2">
+                                <input type="text" id="file-btn-name2" placeholder="Btn 2 Text (Optional)" class="w-1/3 p-2 border rounded-md text-sm">
+                                <input type="url" id="file-download-url2" placeholder="Link 2 URL (Optional)" class="w-2/3 p-2 border rounded-md text-sm">
+                            </div>
+                        </div>
+                    </div>
+                    <button id="add-file-btn" class="w-full bg-indigo-600 text-white py-3 rounded-md hover:bg-indigo-700 font-bold flex items-center justify-center gap-2 shadow-md">
+                        <i class="fas fa-cloud-upload-alt"></i> Publish File
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2"><i class="fas fa-list text-gray-500 mr-2"></i> All Uploaded Files</h2>
+            <div id="file-list" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"></div>
+        </div>
+    </div>
+</div>
+
+<div id="edit-file-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-70 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div class="px-6 py-4 border-b flex justify-between items-center sticky top-0 bg-white z-10">
+            <h3 class="text-xl font-bold text-gray-900">Edit File Details</h3>
+            <button id="close-modal-icon" class="text-gray-400 hover:text-red-500 text-2xl outline-none">&times;</button>
+        </div>
+        <div class="p-6">
+            <input type="hidden" id="edit-file-id">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="space-y-4">
+                    <div><label class="text-xs font-bold text-gray-500 uppercase mb-1 block">Title</label><input type="text" id="edit-file-title" class="w-full p-2 border rounded-md"></div>
+                    <div class="flex gap-4">
+                        <div class="flex-1"><label class="text-xs font-bold text-gray-500 uppercase mb-1 block">Req Ads</label><input type="number" id="edit-file-ad-count" min="1" class="w-full p-2 border rounded-md"></div>
+                        <div class="flex-1"><label class="text-xs font-bold text-gray-500 uppercase mb-1 block">Downloads</label><input type="number" id="edit-file-downloads" min="0" class="w-full p-2 border rounded-md bg-gray-50"></div>
+                    </div>
+                    <div><label class="text-xs font-bold text-gray-500 uppercase mb-1 block">Thumbnail URL</label><input type="url" id="edit-file-thumbnail-url" class="w-full p-2 border rounded-md"></div>
+                    <div><label class="text-xs font-bold text-gray-500 uppercase mb-1 block">Description</label><textarea id="edit-file-description" class="w-full p-2 border rounded-md h-24"></textarea></div>
+                </div>
+                <div class="space-y-4 bg-gray-50 p-4 rounded-lg border">
+                    <div><label class="text-xs font-bold text-gray-500 uppercase mb-1 block">Screenshots (Comma separated)</label><textarea id="edit-file-screenshots" class="w-full p-2 border rounded-md h-20 text-xs font-mono"></textarea></div>
+                    <div><label class="text-xs font-bold text-gray-500 uppercase mb-1 block">Main Link (Button 1)</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="edit-file-btn-name1" placeholder="Btn Text" class="w-1/3 p-2 border rounded-md text-sm">
+                            <input type="url" id="edit-file-download-url" placeholder="Download URL" class="w-2/3 p-2 border rounded-md text-sm">
+                        </div>
+                    </div>
+                    <div><label class="text-xs font-bold text-gray-500 uppercase mb-1 block">Secondary Link (Button 2)</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="edit-file-btn-name2" placeholder="Btn Text" class="w-1/3 p-2 border rounded-md text-sm">
+                            <input type="url" id="edit-file-download-url2" placeholder="Download URL" class="w-2/3 p-2 border rounded-md text-sm">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="bg-gray-50 px-6 py-4 border-t flex justify-end gap-3 rounded-b-xl">
+            <button id="cancel-edit-btn" class="px-6 py-2 bg-white border text-gray-700 font-bold rounded-md hover:bg-gray-100">Cancel</button>
+            <button id="save-edit-btn" class="px-6 py-2 bg-green-500 text-white font-bold rounded-md hover:bg-green-600 flex items-center gap-2 shadow-md"><i class="fas fa-save"></i> Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast" class="fixed top-5 right-5 text-white py-3 px-6 rounded-lg shadow-2xl opacity-0 transform translate-x-10 transition-all duration-300 z-[100] flex items-center gap-3 font-medium">
+    <i id="toast-icon" class="fas fa-info-circle"></i><p id="toast-message"></p>
+</div>
+
+<script>
+// ============ CONFIG ============
+const SUPABASE_URL = 'https://vjzwezrksjeiwxpsglas.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_-PPeh15CPZyiwAQBVt1AVQ_xlTug8PC';
+const ADMIN_EMAIL = 'ingt6359@gmail.com';
+// ================================
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const adminLogin = document.getElementById('admin-login');
+const adminContent = document.getElementById('admin-content');
+const googleLoginBtn = document.getElementById('google-login-btn');
+const signOutBtn = document.getElementById('sign-out-btn');
+const accessDenied = document.getElementById('access-denied');
+const fileList = document.getElementById('file-list');
+const sliderList = document.getElementById('slider-list');
+const editModal = document.getElementById('edit-file-modal');
+
+function handleUser(user) {
+    if (user && user.email === ADMIN_EMAIL) {
+        adminLogin.classList.add('hidden');
+        accessDenied.classList.add('hidden');
+        adminContent.classList.remove('hidden');
+        signOutBtn.classList.remove('hidden');
+        loadAdminData();
+    } else {
+        adminLogin.classList.remove('hidden');
+        adminContent.classList.add('hidden');
+        signOutBtn.classList.add('hidden');
+        if (user) accessDenied.classList.remove('hidden');
+    }
+}
+
+sb.auth.getSession().then(({ data: { session } }) => handleUser(session?.user));
+sb.auth.onAuthStateChange((_event, session) => handleUser(session?.user));
+
+googleLoginBtn.addEventListener('click', async () => {
+    await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.href } });
+});
+signOutBtn.addEventListener('click', async () => { await sb.auth.signOut(); });
+
+function showToast(message, type = 'default') {
+    const toast = document.getElementById('toast');
+    const icon = document.getElementById('toast-icon');
+    document.getElementById('toast-message').textContent = message;
+    toast.classList.remove('bg-gray-800', 'bg-green-600', 'bg-red-500');
+    icon.className = '';
+    if (type === 'success') { toast.classList.add('bg-green-600'); icon.classList.add('fas', 'fa-check-circle'); }
+    else if (type === 'error') { toast.classList.add('bg-red-500'); icon.classList.add('fas', 'fa-exclamation-triangle'); }
+    else { toast.classList.add('bg-gray-800'); icon.classList.add('fas', 'fa-info-circle'); }
+    toast.classList.remove('opacity-0', 'translate-x-10');
+    setTimeout(() => toast.classList.add('opacity-0', 'translate-x-10'), 3500);
+}
+
+async function handleAsyncButton(button, asyncOperation) {
+    const originalHtml = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> Saving...`;
+    try {
+        await asyncOperation();
+        button.innerHTML = `<i class="fas fa-check-circle mr-2"></i> Saved!`;
+    } catch (error) {
+        console.error(error);
+        button.innerHTML = `<i class="fas fa-times-circle mr-2"></i> Error!`;
+        showToast(error.message || 'Operation failed.', 'error');
+    } finally {
+        setTimeout(() => { button.innerHTML = originalHtml; button.disabled = false; }, 2000);
+    }
+}
+
+async function loadAdminData() {
+    await loadAdminSettings();
+    await loadAdminAds();
+    await loadAdminSliders();
+    await loadAdminFiles();
+}
+
+document.getElementById('save-settings-btn').addEventListener('click', (e) => {
+    const duration = parseInt(document.getElementById('timer-duration-setting').value);
+    const appTitle = document.getElementById('app-title-setting').value;
+    const themeColorFrom = document.getElementById('theme-color-from').value;
+    const themeColorTo = document.getElementById('theme-color-to').value;
+    if (duration < 0) return showToast("Timer 0 se kam nahi ho sakta.", 'error');
+    if (!appTitle) return showToast("App title zaroori hai.", 'error');
+    handleAsyncButton(e.currentTarget, async () => {
+        const { error } = await sb.from('settings').upsert({
+            id: 'general',
+            timer_duration: duration,
+            app_title: appTitle,
+            theme_color_from: themeColorFrom,
+            theme_color_to: themeColorTo
+        });
+        if (error) throw error;
+        showToast("Settings save ho gayi!", 'success');
+    });
+});
+
+async function loadAdminSettings() {
+    const { data } = await sb.from('settings').select('*').eq('id', 'general').single();
+    if (data) {
+        document.getElementById('timer-duration-setting').value = data.timer_duration ?? 10;
+        document.getElementById('app-title-setting').value = data.app_title || "Webapp Sikho";
+        document.getElementById('theme-color-from').value = data.theme_color_from || "#4f46e5";
+        document.getElementById('theme-color-to').value = data.theme_color_to || "#7e22ce";
+    }
+}
+
+document.getElementById('save-ads-btn').addEventListener('click', (e) => {
+    const adData = {
+        id: 'ads',
+        ad_slot1: document.getElementById('ad-slot-1').value,
+        ad_slot2: document.getElementById('ad-slot-2').value
+    };
+    handleAsyncButton(e.currentTarget, async () => {
+        const { error } = await sb.from('settings').upsert(adData);
+        if (error) throw error;
+        showToast("Ad codes save ho gaye!", 'success');
+    });
+});
+
+async function loadAdminAds() {
+    const { data } = await sb.from('settings').select('*').eq('id', 'ads').single();
+    if (data) {
+        document.getElementById('ad-slot-1').value = data.ad_slot1 || '';
+        document.getElementById('ad-slot-2').value = data.ad_slot2 || '';
+    }
+}
+
+document.getElementById('add-slider-btn').addEventListener('click', (e) => {
+    const imageUrl = document.getElementById('slider-image-url').value;
+    if (!imageUrl) return showToast("Slider Image URL zaroori hai.", 'error');
+    const linkUrl = document.getElementById('slider-link-url').value;
+    handleAsyncButton(e.currentTarget, async () => {
+        const { error } = await sb.from('sliders').insert({ image_url: imageUrl, link_url: linkUrl || '' });
+        if (error) throw error;
+        showToast("Slider add ho gaya!", 'success');
+        document.getElementById('slider-image-url').value = '';
+        document.getElementById('slider-link-url').value = '';
+        loadAdminSliders();
+    });
+});
+
+async function loadAdminSliders() {
+    sliderList.innerHTML = '';
+    const { data } = await sb.from('sliders').select('*').order('created_at', { ascending: false });
+    (data || []).forEach(slider => {
+        const el = document.createElement('div');
+        el.className = 'relative group rounded-md overflow-hidden border border-gray-200 shadow-sm';
+        el.innerHTML = `
+            <img src="${slider.image_url}" class="w-full h-20 object-cover">
+            <button data-id="${slider.id}" class="delete-slider-btn absolute top-1 right-1 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <i class="fas fa-trash text-xs pointer-events-none"></i>
+            </button>`;
+        sliderList.appendChild(el);
+    });
+}
+
+sliderList.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.delete-slider-btn');
+    if (btn && confirm("Delete this slider?")) {
+        await sb.from('sliders').delete().eq('id', btn.dataset.id);
+        showToast("Slider deleted.", 'success');
+        loadAdminSliders();
+    }
+});
+
+document.getElementById('add-file-btn').addEventListener('click', (e) => {
+    const title = document.getElementById('file-title').value;
+    const thumbnailUrl = document.getElementById('file-thumbnail-url').value;
+    const description = document.getElementById('file-description').value;
+    const downloadUrl = document.getElementById('file-download-url').value;
+    const requiredAds = parseInt(document.getElementById('file-ad-count').value);
+    const screenshotsRaw = document.getElementById('file-screenshots').value;
+    const screenshots = screenshotsRaw ? screenshotsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const btnName1 = document.getElementById('file-btn-name1').value;
+    const btnName2 = document.getElementById('file-btn-name2').value;
+    const downloadUrl2 = document.getElementById('file-download-url2').value;
+
+    if (!title || !thumbnailUrl || !description || !downloadUrl || !requiredAds)
+        return showToast("Main fields bharna zaroori hai.", 'error');
+
+    handleAsyncButton(e.currentTarget, async () => {
+        const { error } = await sb.from('files').insert({
+            title, thumbnail_url: thumbnailUrl, description,
+            download_url: downloadUrl, required_ads: requiredAds,
+            screenshots, btn_name1: btnName1, btn_name2: btnName2,
+            download_url2: downloadUrl2
+        });
+        if (error) throw error;
+        showToast("File live ho gayi!", 'success');
+        ['file-title','file-thumbnail-url','file-description','file-download-url','file-screenshots','file-btn-name1','file-btn-name2','file-download-url2']
+            .forEach(id => document.getElementById(id).value = '');
+        document.getElementById('file-ad-count').value = 5;
+        loadAdminFiles();
+    });
+});
+
+async function loadAdminFiles() {
+    fileList.innerHTML = '<div class="col-span-full text-center py-10 text-gray-500"><i class="fas fa-circle-notch fa-spin text-3xl mb-3"></i><p>Loading...</p></div>';
+    const { data, error } = await sb.from('files').select('*').order('created_at', { ascending: false });
+    if (error) { fileList.innerHTML = '<p class="text-red-500">Error loading files.</p>'; return; }
+
+    fileList.innerHTML = '';
+    let totalFiles = 0, totalDownloads = 0, totalReviews = 0;
+    let uniqueUsers = new Set();
+
+    data.forEach(file => {
+        totalFiles++;
+        totalDownloads += (file.downloads || 0);
+        let reviews = file.reviews || [];
+        let reviewsCount = reviews.length;
+        let ratingAvg = "0.0";
+        if (reviewsCount > 0) {
+            totalReviews += reviewsCount;
+            let sum = reviews.reduce((a, r) => a + (r.rating || 0), 0);
+            ratingAvg = (sum / reviewsCount).toFixed(1);
+            reviews.forEach(r => { if (r.userId) uniqueUsers.add(r.userId); });
+        }
+
+        const el = document.createElement('div');
+        el.className = 'bg-white rounded-xl shadow-sm border overflow-hidden hover:shadow-md transition-shadow relative';
+        el.innerHTML = `
+            <div class="h-32 bg-gray-100 relative">
+                <img src="${file.thumbnail_url}" class="w-full h-full object-cover">
+                <div class="absolute top-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded backdrop-blur-sm shadow">
+                    <i class="fas fa-lock text-[8px]"></i> ${file.required_ads} Ads
+                </div>
+            </div>
+            <div class="p-4">
+                <h3 class="font-bold text-gray-800 line-clamp-1 mb-1">${file.title}</h3>
+                <div class="flex items-center gap-3 text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-3 bg-gray-50 p-2 rounded">
+                    <div class="flex-1 text-center border-r border-gray-200">
+                        <span class="block text-green-600 text-sm"><i class="fas fa-download"></i> ${file.downloads || 0}</span>Dls
+                    </div>
+                    <div class="flex-1 text-center">
+                        <span class="block text-yellow-500 text-sm"><i class="fas fa-star"></i> ${ratingAvg}</span>(${reviewsCount})
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button data-id="${file.id}" class="edit-file-btn flex-1 bg-indigo-50 text-indigo-600 border border-indigo-100 py-1.5 rounded-md hover:bg-indigo-600 hover:text-white font-semibold flex items-center justify-center gap-1 text-sm">
+                        <i class="fas fa-pen pointer-events-none"></i> Edit
+                    </button>
+                    <button data-id="${file.id}" class="delete-file-btn flex-1 bg-red-50 text-red-600 border border-red-100 py-1.5 rounded-md hover:bg-red-600 hover:text-white font-semibold flex items-center justify-center gap-1 text-sm">
+                        <i class="fas fa-trash pointer-events-none"></i>
+                    </button>
+                </div>
+            </div>`;
+        fileList.appendChild(el);
+    });
+
+    document.getElementById('stat-total-files').textContent = totalFiles;
+    document.getElementById('stat-total-downloads').textContent = totalDownloads;
+    document.getElementById('stat-total-reviews').textContent = totalReviews;
+    document.getElementById('stat-total-users').textContent = uniqueUsers.size;
+}
+
+fileList.addEventListener('click', async (e) => {
+    const deleteBtn = e.target.closest('.delete-file-btn');
+    const editBtn = e.target.closest('.edit-file-btn');
+
+    if (deleteBtn) {
+        if (confirm("Kya aap sach me is file ko delete karna chahte hain?")) {
+            await sb.from('files').delete().eq('id', deleteBtn.dataset.id);
+            showToast("File deleted.", 'success');
+            loadAdminFiles();
+        }
+    } else if (editBtn) {
+        const fileId = editBtn.dataset.id;
+        const { data } = await sb.from('files').select('*').eq('id', fileId).single();
+        if (data) {
+            document.getElementById('edit-file-id').value = fileId;
+            document.getElementById('edit-file-title').value = data.title || '';
+            document.getElementById('edit-file-ad-count').value = data.required_ads || 5;
+            document.getElementById('edit-file-downloads').value = data.downloads || 0;
+            document.getElementById('edit-file-thumbnail-url').value = data.thumbnail_url || '';
+            document.getElementById('edit-file-description').value = data.description || '';
+            document.getElementById('edit-file-download-url').value = data.download_url || '';
+            document.getElementById('edit-file-screenshots').value = (data.screenshots || []).join(', ');
+            document.getElementById('edit-file-btn-name1').value = data.btn_name1 || '';
+            document.getElementById('edit-file-btn-name2').value = data.btn_name2 || '';
+            document.getElementById('edit-file-download-url2').value = data.download_url2 || '';
+            editModal.classList.remove('hidden');
+        }
+    }
+});
+
+document.getElementById('cancel-edit-btn').addEventListener('click', () => editModal.classList.add('hidden'));
+document.getElementById('close-modal-icon').addEventListener('click', () => editModal.classList.add('hidden'));
+
+document.getElementById('save-edit-btn').addEventListener('click', (e) => {
+    const fileId = document.getElementById('edit-file-id').value;
+    const screenshotsRaw = document.getElementById('edit-file-screenshots').value;
+    const updated = {
+        title: document.getElementById('edit-file-title').value,
+        required_ads: parseInt(document.getElementById('edit-file-ad-count').value),
+        downloads: parseInt(document.getElementById('edit-file-downloads').value),
+        thumbnail_url: document.getElementById('edit-file-thumbnail-url').value,
+        description: document.getElementById('edit-file-description').value,
+        download_url: document.getElementById('edit-file-download-url').value,
+        screenshots: screenshotsRaw ? screenshotsRaw.split(',').map(s => s.trim()).filter(Boolean) : [],
+        btn_name1: document.getElementById('edit-file-btn-name1').value,
+        btn_name2: document.getElementById('edit-file-btn-name2').value,
+        download_url2: document.getElementById('edit-file-download-url2').value
+    };
+    if (!updated.title || !updated.thumbnail_url || !updated.download_url)
+        return showToast("Main fields bharna zaroori hai.", 'error');
+
+    handleAsyncButton(e.currentTarget, async () => {
+        const { error } = await sb.from('files').update(updated).eq('id', fileId);
+        if (error) throw error;
+        showToast("File changes saved!", 'success');
+        editModal.classList.add('hidden');
+        loadAdminFiles();
+    });
+});
+</script>
+</body>
+</html>
