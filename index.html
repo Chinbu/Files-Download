@@ -41,7 +41,7 @@
                 <i id="theme-icon" class="fas fa-moon"></i>
             </button>
         </div>
-        <h1 data-key="main_title" class="text-3xl md:text-5xl font-extrabold text-center mb-2 relative z-10 app-dynamic-title">XBI TECH</h1>
+        <h1 data-key="main_title" class="text-3xl md:text-5xl font-extrabold text-center mb-2 relative z-10 app-dynamic-title">Webapp Sikho</h1>
         <p data-key="main_subtitle" class="text-center text-indigo-100 mb-6 relative z-10">Watch Ads, Unlock & Download!</p>
         <div class="relative w-full max-w-md mx-auto z-10">
             <i class="fas fa-search absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
@@ -87,7 +87,7 @@
             <img id="detail-icon" src="" class="w-20 h-20 md:w-32 md:h-32 rounded-2xl object-cover shadow-sm border border-gray-100 dark:border-gray-700 flex-shrink-0 bg-gray-100 dark:bg-gray-800">
             <div class="flex-1 min-w-0 w-full overflow-hidden">
                 <h1 id="detail-title" class="text-xl md:text-3xl font-bold text-gray-900 dark:text-white mb-1 leading-tight truncate"></h1>
-                <p class="text-xs md:text-sm text-indigo-600 dark:text-indigo-400 font-bold mb-3 app-dynamic-title truncate">XBI TECH</p>
+                <p class="text-xs md:text-sm text-indigo-600 dark:text-indigo-400 font-bold mb-3 app-dynamic-title truncate">Webapp Sikho</p>
                 <div class="flex justify-between items-center bg-gray-50 dark:bg-gray-800 rounded-xl p-2 md:p-3 border border-gray-100 dark:border-gray-700 mt-2 w-full">
                     <div class="flex flex-col items-center justify-center flex-1">
                         <span class="font-bold text-gray-900 dark:text-white flex items-center gap-1 text-sm md:text-base"><span id="detail-rating-avg">0.0</span> <i class="fas fa-star text-[10px] text-yellow-400"></i></span>
@@ -194,15 +194,43 @@ let userRating = 0;
 let slideInterval = null;
 
 let tgUser = { id: null, name: "Guest User" };
+
 try {
     if (window.Telegram && window.Telegram.WebApp) {
         const tg = window.Telegram.WebApp;
         tg.expand();
         tg.ready();
+        
         if (tg.initDataUnsafe?.user) {
             tgUser.id = tg.initDataUnsafe.user.id.toString();
             tgUser.name = tg.initDataUnsafe.user.first_name || tg.initDataUnsafe.user.username;
         }
+
+        // ==========================================
+        // 🔥 TELEGRAM MINI APP MOBILE ADS FIX 🔥
+        // ==========================================
+        // Telegram Mobile block window.open and blank targets which Ad networks rely on.
+        // We intercept these requests and force Telegram to use `openLink()`.
+
+        const originalWindowOpen = window.open;
+        window.open = function(url, target, features) {
+            try {
+                if (url) tg.openLink(url.toString());
+                return { closed: false, focus: function(){}, close: function(){} }; 
+            } catch (e) {
+                return originalWindowOpen(url, target, features);
+            }
+        };
+        
+        document.addEventListener('click', function(e) {
+            const a = e.target.closest('a');
+            // Agar link naye tab mein khulna chahta hai, to usko direct openLink se bhejenge
+            if (a && a.href && a.target === '_blank') {
+                e.preventDefault();
+                tg.openLink(a.href);
+            }
+        }, true);
+        // ==========================================
     }
 } catch (e) { console.error("Telegram Error", e); }
 
@@ -231,7 +259,7 @@ if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && w
 }
 
 const translations = {
-    en: { main_title:"XBI TECH", main_subtitle:"Watch Ads, Unlock & Download!", search_placeholder:"Search files...", available_files:"Available Files", unlock_btn:"Watch Ad to Unlock", loading_ad:"Loading Ad...", wait_text:"Please wait {cd}s...", progress_text:"Progress: {count}/{req} Ads watched", unlocked_msg:"Unlocked Successfully!", ad_failed:"Ad Failed. Retry", download_default:"Download", nav_home:"Home", nav_history:"History", history_title:"Downloads", history_subtitle:"Files you have unlocked", empty_history:"No files unlocked yet.", screenshots:"Screenshots", about_app:"About this file", reviews:"Ratings & Reviews", rate_this:"Rate this file", submit_review:"Submit Review", update_review:"Update Review", no_reviews:"No reviews yet. Be the first to review!" },
+    en: { main_title:"Webapp Sikho", main_subtitle:"Watch Ads, Unlock & Download!", search_placeholder:"Search files...", available_files:"Available Files", unlock_btn:"Watch Ad to Unlock", loading_ad:"Loading Ad...", wait_text:"Please wait {cd}s...", progress_text:"Progress: {count}/{req} Ads watched", unlocked_msg:"Unlocked Successfully!", ad_failed:"Ad Failed. Retry", download_default:"Download", nav_home:"Home", nav_history:"History", history_title:"Downloads", history_subtitle:"Files you have unlocked", empty_history:"No files unlocked yet.", screenshots:"Screenshots", about_app:"About this file", reviews:"Ratings & Reviews", rate_this:"Rate this file", submit_review:"Submit Review", update_review:"Update Review", no_reviews:"No reviews yet. Be the first to review!" },
     hi: { main_title:"वेबऐप सीखो", main_subtitle:"विज्ञापन देखें और मुफ्त डाउनलोड करें!", search_placeholder:"फाइलें खोजें...", available_files:"उपलब्ध फाइलें", unlock_btn:"अनलॉक के लिए विज्ञापन देखें", loading_ad:"विज्ञापन लोड हो रहा है...", wait_text:"कृपया रुकें {cd}s...", progress_text:"प्रगति: {count}/{req} विज्ञापन देखे गए", unlocked_msg:"फाइल अनलॉक हो गई!", ad_failed:"विफल। पुनः प्रयास करें", download_default:"डाउनलोड", nav_home:"होम", nav_history:"इतिहास", history_title:"डाउनलोड्स", history_subtitle:"आपकी अनलॉक की गई फाइलें", empty_history:"अभी तक कोई फाइल अनलॉक नहीं की गई।", screenshots:"स्क्रीनशॉट्स", about_app:"इस फाइल के बारे में", reviews:"रेटिंग और समीक्षाएं", rate_this:"इस फाइल को रेट करें", submit_review:"समीक्षा जमा करें", update_review:"समीक्षा अपडेट करें", no_reviews:"अभी तक कोई समीक्षा नहीं। पहली समीक्षा लिखें!" },
     bn: { main_title:"ওয়েবঅ্যাপ শিখুন", main_subtitle:"বিজ্ঞাপন দেখুন এবং ডাউনলোড করুন!", search_placeholder:"ফাইল খুঁজুন...", available_files:"উপলব্ধ ফাইল", unlock_btn:"আনলক করতে বিজ্ঞাপন দেখুন", loading_ad:"বিজ্ঞাপন লোড হচ্ছে...", wait_text:"অপেক্ষা করুন {cd}s...", progress_text:"অগ্রগতি: {count}/{req} বিজ্ঞাপন দেখা হয়েছে", unlocked_msg:"আনলক সফল হয়েছে!", ad_failed:"ব্যর্থ। আবার চেষ্টা করুন", download_default:"ডাউনলোড", nav_home:"হোম", nav_history:"ইতিহাস", history_title:"ডাউনলোডস", history_subtitle:"আপনার আনলক করা ফাইলগুলি", empty_history:"এখনও কোনও ফাইল আনলক করা হয়নি।", screenshots:"স্ক্রিনশট", about_app:"এই ফাইল সম্পর্কে", reviews:"রেটিং এবং পর্যালোচনা", rate_this:"এই ফাইলটি রেট করুন", submit_review:"পর্যালোচনা জমা দিন", update_review:"পর্যালোচনা আপডেট করুন", no_reviews:"এখনও কোন পর্যালোচনা নেই। প্রথম হন!" }
 };
@@ -533,17 +561,6 @@ document.getElementById('submit-review-btn').addEventListener('click', async () 
     } catch (e) { console.error("Save review error", e); showToast("DB save failed"); }
 });
 
-// FIXED: Isko async hone ke bajaye directly Promise return karne ke liye modify kar diya hai
-function showMonetagAd(ymid) {
-    const fnName = `show_${MONETAG_ZONE_ID}`;
-    const fn = window[fnName];
-    if (typeof fn !== 'function') {
-        return Promise.reject(new Error(`Monetag SDK not loaded (missing ${fnName}). Check <script> tag.`));
-    }
-    // Ye ad ko synchronously invoke karta hai
-    return fn({ ymid });
-}
-
 function updateDetailButtonState(file) {
     const req = parseInt(file.required_ads) || 5;
     const count = parseInt(localStorage.getItem(`adCount_${file.id}`)) || 0;
@@ -564,23 +581,38 @@ function updateDetailButtonState(file) {
     }
 }
 
-// FIXED: Unlock logic jisme mobile user context properly handle hota hai
-window.unlockFile = async (id, req) => {
+// ====================================================
+// 🔥 STRICT SYNCHRONOUS AD FUNCTION 🔥
+// Is function se 'async' keyword hata diya hai taaki browser 
+// ko manual click ka pata chale.
+// ====================================================
+window.unlockFile = function(id, req) {
     const btn = document.getElementById('unlock-action-btn');
     if (!btn || btn.disabled) return;
-    
-    // IMPORTANT FIX: Monetag SDK ko update / DOM change hone se pehle execute karna zaruri hai.
-    // Agar hum button ko pehle hi disable kardenge, to iOS/Android popup blockers "click event" ko
-    // invalid maan lete hain aur tabhi ads failed ka error deta hai.
-    const adPromise = showMonetagAd(tgUser.id);
-    
-    // Ad initiate hone ke baad hum safely UI change kar sakte hain
+
+    const fnName = `show_${MONETAG_ZONE_ID}`;
+    const showAdSDK = window[fnName];
+
+    if (typeof showAdSDK !== 'function') {
+        showToast("Ad system loading, please wait...");
+        return;
+    }
+
+    let adPromise;
+    try {
+        // Bina koi delay kiye SDK ko directly invoke karenge
+        adPromise = showAdSDK({ ymid: tgUser.id });
+    } catch (err) {
+        console.error("Ad Func error", err);
+        adPromise = Promise.reject(err);
+    }
+
+    // Ab safely button ki UI update karenge
     btn.disabled = true;
     btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span>${getText('loading_ad')}</span>`;
-    
-    try {
-        await adPromise;
-        
+
+    // Promise resolve hone ke baad baki ka logic run hoga
+    Promise.resolve(adPromise).then(async () => {
         let count = parseInt(localStorage.getItem(`adCount_${id}`)) || 0;
         count++;
         localStorage.setItem(`adCount_${id}`, count);
@@ -614,14 +646,14 @@ window.unlockFile = async (id, req) => {
                 }
             }, 1000);
         }
-    } catch (e) {
-        console.error("Monetag ad error", e);
+    }).catch(err => {
+        console.error("Monetag ad error", err);
         const activeBtn = document.getElementById('unlock-action-btn');
         if (activeBtn) {
             activeBtn.disabled = false;
             activeBtn.innerHTML = `<i class="fas fa-exclamation-triangle"></i> <span>${getText('ad_failed')}</span>`;
         }
-    }
+    });
 };
 
 function saveToHistory(fileId) {
