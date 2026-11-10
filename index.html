@@ -533,13 +533,15 @@ document.getElementById('submit-review-btn').addEventListener('click', async () 
     } catch (e) { console.error("Save review error", e); showToast("DB save failed"); }
 });
 
-async function showMonetagAd(ymid) {
+// FIXED: Isko async hone ke bajaye directly Promise return karne ke liye modify kar diya hai
+function showMonetagAd(ymid) {
     const fnName = `show_${MONETAG_ZONE_ID}`;
     const fn = window[fnName];
     if (typeof fn !== 'function') {
-        throw new Error(`Monetag SDK not loaded (missing ${fnName}). Check <script> tag.`);
+        return Promise.reject(new Error(`Monetag SDK not loaded (missing ${fnName}). Check <script> tag.`));
     }
-    await fn({ ymid });
+    // Ye ad ko synchronously invoke karta hai
+    return fn({ ymid });
 }
 
 function updateDetailButtonState(file) {
@@ -562,16 +564,27 @@ function updateDetailButtonState(file) {
     }
 }
 
+// FIXED: Unlock logic jisme mobile user context properly handle hota hai
 window.unlockFile = async (id, req) => {
     const btn = document.getElementById('unlock-action-btn');
     if (!btn || btn.disabled) return;
+    
+    // IMPORTANT FIX: Monetag SDK ko update / DOM change hone se pehle execute karna zaruri hai.
+    // Agar hum button ko pehle hi disable kardenge, to iOS/Android popup blockers "click event" ko
+    // invalid maan lete hain aur tabhi ads failed ka error deta hai.
+    const adPromise = showMonetagAd(tgUser.id);
+    
+    // Ad initiate hone ke baad hum safely UI change kar sakte hain
     btn.disabled = true;
     btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span>${getText('loading_ad')}</span>`;
+    
     try {
-        await showMonetagAd(tgUser.id);
+        await adPromise;
+        
         let count = parseInt(localStorage.getItem(`adCount_${id}`)) || 0;
         count++;
         localStorage.setItem(`adCount_${id}`, count);
+        
         if (count >= req) {
             showToast(getText('unlocked_msg'));
             saveToHistory(id);
@@ -587,19 +600,27 @@ window.unlockFile = async (id, req) => {
             showToast(getText('progress_text', { count, req }));
             let cd = timerDuration;
             const int = setInterval(() => {
-                btn.innerHTML = `<i class="fas fa-clock"></i> <span>${getText('wait_text', { cd })}</span>`;
+                const activeBtn = document.getElementById('unlock-action-btn');
+                if (!activeBtn) {
+                    clearInterval(int);
+                    return;
+                }
+                activeBtn.innerHTML = `<i class="fas fa-clock"></i> <span>${getText('wait_text', { cd })}</span>`;
                 cd--;
                 if (cd < 0) {
                     clearInterval(int);
-                    btn.disabled = false;
-                    btn.innerHTML = `<i class="fas fa-lock"></i> <span>${getText('unlock_btn')} (${count}/${req})</span>`;
+                    activeBtn.disabled = false;
+                    activeBtn.innerHTML = `<i class="fas fa-lock"></i> <span>${getText('unlock_btn')} (${count}/${req})</span>`;
                 }
             }, 1000);
         }
     } catch (e) {
         console.error("Monetag ad error", e);
-        btn.disabled = false;
-        btn.innerHTML = `<i class="fas fa-exclamation-triangle"></i> <span>${getText('ad_failed')}</span>`;
+        const activeBtn = document.getElementById('unlock-action-btn');
+        if (activeBtn) {
+            activeBtn.disabled = false;
+            activeBtn.innerHTML = `<i class="fas fa-exclamation-triangle"></i> <span>${getText('ad_failed')}</span>`;
+        }
     }
 };
 
