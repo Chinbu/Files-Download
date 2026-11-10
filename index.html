@@ -190,18 +190,19 @@
         </div>
         <div class="p-5">
             <p class="text-sm text-gray-700 dark:text-gray-300 mb-4 text-center">
-                Downloads unlock karne ke liye <b>ads dekhna zaroori</b> hai. Aapke browser me adblocker active hai jiski wajah se ads load nahi ho pa rahe.
+                Downloads unlock karne ke liye <b>ads dekhna zaroori</b> hai. Aapke device par adblocker active hai jiski wajah se ads load nahi ho pa rahe.
             </p>
             <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-xs text-amber-900 dark:text-amber-200 mb-4">
                 <p class="font-bold mb-2 flex items-center gap-1"><i class="fas fa-lightbulb"></i> Adblocker off kaise karein:</p>
                 <ol class="list-decimal ml-4 space-y-1">
-                    <li>Browser me <b>AdBlock / uBlock / Brave Shield</b> extension off karo</li>
-                    <li>Is page ko <b>refresh</b> karo</li>
+                    <li>Agar aap <b>Telegram Desktop/Web</b> par ho to browser extension (AdBlock/uBlock) off karo</li>
+                    <li>Agar aap <b>Telegram Mobile</b> par ho to phone ki <b>Private DNS</b> ya adblocking app check karo</li>
+                    <li>App ko <b>refresh</b> karo</li>
                     <li>Fir <b>"Watch Ad to Unlock"</b> button dobara dabao</li>
                 </ol>
             </div>
             <p class="text-[11px] text-gray-500 dark:text-gray-400 text-center mb-4">
-                <i class="fas fa-info-circle"></i> Telegram user ho to Settings → Data & Storage → Ad blocking check karo
+                <i class="fas fa-info-circle"></i> Telegram Mobile apps mein browser extensions nahi hote, lekin system-level adblockers (jaise AdGuard, NextDNS) effect kar sakte hain.
             </p>
             <div class="flex gap-2">
                 <button onclick="window.closeAdblockModal()" class="flex-1 py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-bold rounded-xl text-sm">Baad Me</button>
@@ -224,9 +225,7 @@
 const SUPABASE_URL = 'https://vjzwezrksjeiwxpsglas.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_-PPeh15CPZyiwAQBVt1AVQ_xlTug8PC';
 const MONETAG_ZONE_ID = '12233684';
-
-// ⏰ UNLOCK VALIDITY — Yahan se duration change karo
-const UNLOCK_VALIDITY_HOURS = 24;                                 // 24h, 48h, 168h (7d), 720h (30d)
+const UNLOCK_VALIDITY_HOURS = 24;
 const UNLOCK_VALIDITY_MS = UNLOCK_VALIDITY_HOURS * 60 * 60 * 1000;
 // ================================
 
@@ -261,25 +260,21 @@ if (!tgUser.id) {
 }
 document.getElementById('user-display-name').textContent = tgUser.name;
 
-// ========== UNLOCK STATE HELPERS (with 24h expiry) ==========
+// ========== UNLOCK STATE (24h expiry) ==========
 function getUnlockState(fileId, req) {
     const raw = localStorage.getItem(`unlock_${fileId}`);
     if (!raw) return { count: 0, isUnlocked: false };
     try {
         const data = JSON.parse(raw);
         const now = Date.now();
-
-        // Unlocked but expired
         if (data.count >= req && data.expiresAt && now > data.expiresAt) {
             localStorage.removeItem(`unlock_${fileId}`);
             return { count: 0, isUnlocked: false, expired: true };
         }
-        // Not unlocked & progress is stale
         if (data.count < req && data.lastUpdated && (now - data.lastUpdated) > UNLOCK_VALIDITY_MS) {
             localStorage.removeItem(`unlock_${fileId}`);
             return { count: 0, isUnlocked: false, expired: data.count > 0 };
         }
-
         const isUnlocked = data.count >= req;
         let hoursRemaining = 0, minutesRemaining = 0;
         if (isUnlocked && data.expiresAt) {
@@ -288,9 +283,7 @@ function getUnlockState(fileId, req) {
             minutesRemaining = Math.floor((msLeft % (1000 * 60 * 60)) / (1000 * 60));
         }
         return { count: data.count, isUnlocked, hoursRemaining, minutesRemaining, expiresAt: data.expiresAt };
-    } catch (e) {
-        return { count: 0, isUnlocked: false };
-    }
+    } catch (e) { return { count: 0, isUnlocked: false }; }
 }
 
 function saveUnlockProgress(fileId, count, req) {
@@ -299,9 +292,7 @@ function saveUnlockProgress(fileId, count, req) {
     const data = {
         count,
         lastUpdated: Date.now(),
-        expiresAt: (count >= req && !wasAlreadyUnlocked)
-            ? Date.now() + UNLOCK_VALIDITY_MS
-            : existing.expiresAt
+        expiresAt: (count >= req && !wasAlreadyUnlocked) ? Date.now() + UNLOCK_VALIDITY_MS : existing.expiresAt
     };
     localStorage.setItem(`unlock_${fileId}`, JSON.stringify(data));
 }
@@ -312,24 +303,49 @@ function formatExpiryTime(hoursRemaining, minutesRemaining) {
     return `<1m`;
 }
 
-// ========== ADBLOCK DETECTION ==========
+// ========== ADBLOCK DETECTION (Telegram‑safe) ==========
 function isMonetagReady() { return typeof window[`show_${MONETAG_ZONE_ID}`] === 'function'; }
 
-async function detectAdBlocker() {
-    try {
-        const bait = document.createElement('div');
-        bait.className = 'ad-banner adsbox pub_300x250 text-ad ad-placeholder';
-        bait.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;';
-        bait.innerHTML = '&nbsp;';
-        document.body.appendChild(bait);
-        await new Promise(r => setTimeout(r, 150));
-        const blocked = bait.offsetHeight === 0 || bait.clientHeight === 0 || bait.offsetParent === null;
-        bait.remove();
-        if (blocked) return true;
-    } catch (e) {}
-
+async function showMonetagAd(ymid) {
+    // Wait up to 3s for SDK to load
+    let attempts = 0;
+    while (!isMonetagReady() && attempts < 30) {
+        await new Promise(r => setTimeout(r, 100));
+        attempts++;
+    }
     if (!isMonetagReady()) {
-        for (let i = 0; i < 20; i++) {
+        const err = new Error('ADBLOCK_DETECTED');
+        err.code = 'ADBLOCK';
+        throw err;
+    }
+    try {
+        // Try to show ad – this will reject if blocked
+        await window[`show_${MONETAG_ZONE_ID}`]({ ymid });
+    } catch (e) {
+        // Monetag rejects with "Empty feed" or similar when ads are blocked
+        if (e.message && (e.message.toLowerCase().includes('empty') || e.message.toLowerCase().includes('block') || e.message.toLowerCase().includes('fail'))) {
+            const err = new Error('ADBLOCK_DETECTED');
+            err.code = 'ADBLOCK';
+            throw err;
+        }
+        throw e; // other errors (timeout, etc.) – not necessarily adblock
+    }
+}
+
+async function detectAdBlocker() {
+    // First, try a preload – if it rejects, likely adblocker
+    if (isMonetagReady()) {
+        try {
+            await window[`show_${MONETAG_ZONE_ID}`]({ type: 'preload' });
+        } catch (e) {
+            // If preload fails with empty feed, assume adblocker
+            if (e.message && (e.message.toLowerCase().includes('empty') || e.message.toLowerCase().includes('block'))) {
+                return true;
+            }
+        }
+    } else {
+        // SDK not loaded after 3s – could be network or adblocker
+        for (let i = 0; i < 30; i++) {
             await new Promise(r => setTimeout(r, 100));
             if (isMonetagReady()) break;
         }
@@ -366,8 +382,11 @@ window.retryAdblockCheck = async () => {
 };
 
 async function runInitialAdblockCheck() {
-    const blocked = await detectAdBlocker();
-    document.getElementById('adblock-notice').classList.toggle('hidden', !blocked);
+    // Wait for SDK to load, then try preload
+    setTimeout(async () => {
+        const blocked = await detectAdBlocker();
+        document.getElementById('adblock-notice').classList.toggle('hidden', !blocked);
+    }, 1000);
 }
 
 // ========== DARK MODE ==========
@@ -678,21 +697,7 @@ document.getElementById('submit-review-btn').addEventListener('click', async () 
     } catch (e) { console.error("Save review error", e); showToast("DB save failed"); }
 });
 
-async function showMonetagAd(ymid) {
-    let attempts = 0;
-    while (!isMonetagReady() && attempts < 30) {
-        await new Promise(r => setTimeout(r, 100));
-        attempts++;
-    }
-    if (!isMonetagReady()) {
-        const err = new Error('ADBLOCK_DETECTED');
-        err.code = 'ADBLOCK';
-        throw err;
-    }
-    await window[`show_${MONETAG_ZONE_ID}`]({ ymid });
-}
-
-// ===== DETAIL BUTTON STATE (with expiry info) =====
+// ===== DETAIL BUTTON STATE =====
 function updateDetailButtonState(file) {
     const req = parseInt(file.required_ads) || 5;
     const state = getUnlockState(file.id, req);
@@ -728,7 +733,6 @@ window.unlockFile = async (id, req) => {
         await showMonetagAd(tgUser.id);
         const state = getUnlockState(id, req);
         let newCount = state.count + 1;
-
         saveUnlockProgress(id, newCount, req);
 
         if (newCount >= req) {
@@ -781,15 +785,12 @@ function renderHistory() {
     const historyList = document.getElementById('history-list');
     const emptyState = document.getElementById('empty-history');
     let historyIds = JSON.parse(localStorage.getItem('downloadHistory') || '[]');
-
-    // Filter: only show still-valid unlocks
     historyIds = historyIds.filter(id => {
         const file = allFiles.find(f => f.id === id);
         if (!file) return false;
         const req = parseInt(file.required_ads) || 5;
         return getUnlockState(id, req).isUnlocked;
     });
-
     historyList.innerHTML = '';
     if (historyIds.length === 0) emptyState.classList.remove('hidden');
     else {
@@ -848,6 +849,7 @@ async function init() {
     try { await sb.auth.signInAnonymously(); }
     catch (e) { console.warn("Anonymous auth failed", e); }
     await loadData();
+    // Initial adblock check after SDK load
     setTimeout(runInitialAdblockCheck, 1500);
 }
 
