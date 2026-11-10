@@ -7,21 +7,11 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script>tailwind.config = { darkMode: 'class', theme: { extend: {} } }</script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-
-    <!-- ✅ Telegram WebApp SDK — MUST load BEFORE Monetag -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-
-    <!-- ✅ Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-    <!-- ✅ Monetag TMA SDK — explicit HTTPS (protocol-relative `//` mobile WebView me kabhi fail hota hai) -->
-    <script src="https://libtl.com/sdk.js"
-            data-zone="12233684"
-            data-sdk="show_12233684"></script>
-
-    <!-- 🐞 ERUDA: Mobile debug console (production me hata dena) -->
-    <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-    <script>eruda.init({ useShadowDom: true });</script>
+    <!-- MONETAG TELEGRAM MINI APP SDK -->
+    <script src='//libtl.com/sdk.js' data-zone='12233684' data-sdk='show_12233684'></script>
 
     <style>
         .hide-scrollbar::-webkit-scrollbar { display: none; }
@@ -51,7 +41,7 @@
                 <i id="theme-icon" class="fas fa-moon"></i>
             </button>
         </div>
-        <h1 data-key="main_title" class="text-3xl md:text-5xl font-extrabold text-center mb-2 relative z-10 app-dynamic-title">Webapp Sikho</h1>
+        <h1 data-key="main_title" class="text-3xl md:text-5xl font-extrabold text-center mb-2 relative z-10 app-dynamic-title">XBI TECH</h1>
         <p data-key="main_subtitle" class="text-center text-indigo-100 mb-6 relative z-10">Watch Ads, Unlock & Download!</p>
         <div class="relative w-full max-w-md mx-auto z-10">
             <i class="fas fa-search absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
@@ -97,7 +87,7 @@
             <img id="detail-icon" src="" class="w-20 h-20 md:w-32 md:h-32 rounded-2xl object-cover shadow-sm border border-gray-100 dark:border-gray-700 flex-shrink-0 bg-gray-100 dark:bg-gray-800">
             <div class="flex-1 min-w-0 w-full overflow-hidden">
                 <h1 id="detail-title" class="text-xl md:text-3xl font-bold text-gray-900 dark:text-white mb-1 leading-tight truncate"></h1>
-                <p class="text-xs md:text-sm text-indigo-600 dark:text-indigo-400 font-bold mb-3 app-dynamic-title truncate">Webapp Sikho</p>
+                <p class="text-xs md:text-sm text-indigo-600 dark:text-indigo-400 font-bold mb-3 app-dynamic-title truncate">XBI TECH</p>
                 <div class="flex justify-between items-center bg-gray-50 dark:bg-gray-800 rounded-xl p-2 md:p-3 border border-gray-100 dark:border-gray-700 mt-2 w-full">
                     <div class="flex flex-col items-center justify-center flex-1">
                         <span class="font-bold text-gray-900 dark:text-white flex items-center gap-1 text-sm md:text-base"><span id="detail-rating-avg">0.0</span> <i class="fas fa-star text-[10px] text-yellow-400"></i></span>
@@ -192,7 +182,6 @@
 const SUPABASE_URL = 'https://vjzwezrksjeiwxpsglas.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_-PPeh15CPZyiwAQBVt1AVQ_xlTug8PC';
 const MONETAG_ZONE_ID = '12233684';
-const MONETAG_SDK_FN = `show_${MONETAG_ZONE_ID}`;
 // ================================
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -204,24 +193,18 @@ let currentFileId = null;
 let userRating = 0;
 let slideInterval = null;
 
-// ---------- TELEGRAM INIT ----------
-let tg = null;
 let tgUser = { id: null, name: "Guest User" };
 try {
     if (window.Telegram && window.Telegram.WebApp) {
-        tg = window.Telegram.WebApp;
-        tg.ready();
+        const tg = window.Telegram.WebApp;
         tg.expand();
-        tg.disableVerticalSwipes?.();
+        tg.ready();
         if (tg.initDataUnsafe?.user) {
             tgUser.id = tg.initDataUnsafe.user.id.toString();
-            tgUser.name = tg.initDataUnsafe.user.first_name || tg.initDataUnsafe.user.username || "User";
+            tgUser.name = tg.initDataUnsafe.user.first_name || tg.initDataUnsafe.user.username;
         }
-        console.log('[Telegram] WebApp initialized. User:', tgUser);
-    } else {
-        console.warn('[Telegram] WebApp SDK not found — running outside Telegram?');
     }
-} catch (e) { console.error("[Telegram] Init error:", e); }
+} catch (e) { console.error("Telegram Error", e); }
 
 if (!tgUser.id) {
     let storedId = localStorage.getItem('guestUserId');
@@ -233,88 +216,6 @@ if (!tgUser.id) {
 }
 document.getElementById('user-display-name').textContent = tgUser.name;
 
-// ==========================================
-// ========== MONETAG SDK LOADER ============
-// ==========================================
-let monetagSDKReady = false;
-let monetagSDKLoadError = null;
-
-// Poll for global function (handles async script load)
-function waitForMonetagSDK(timeoutMs = 12000) {
-    return new Promise((resolve, reject) => {
-        if (typeof window[MONETAG_SDK_FN] === 'function') {
-            monetagSDKReady = true;
-            return resolve();
-        }
-        if (monetagSDKLoadError) {
-            return reject(new Error(monetagSDKLoadError));
-        }
-
-        let elapsed = 0;
-        const interval = 200;
-        console.log(`[Monetag] Waiting for ${MONETAG_SDK_FN}... (timeout ${timeoutMs}ms)`);
-
-        const timer = setInterval(() => {
-            elapsed += interval;
-            if (typeof window[MONETAG_SDK_FN] === 'function') {
-                clearInterval(timer);
-                monetagSDKReady = true;
-                console.log(`[Monetag] SDK ready after ${elapsed}ms ✅`);
-                resolve();
-            } else if (elapsed >= timeoutMs) {
-                clearInterval(timer);
-                const msg = `Monetag SDK load timeout (${timeoutMs}ms). ` +
-                    `Possible causes: (1) libtl.com blocked by network/adblock/VPN, ` +
-                    `(2) Telegram WebView restriction, (3) wrong zone ID (must be MAIN zone, not sub-zone). ` +
-                    `Expected global: ${MONETAG_SDK_FN}`;
-                monetagSDKLoadError = msg;
-                console.error(`[Monetag] ${msg}`);
-                reject(new Error(msg));
-            }
-        }, interval);
-    });
-}
-
-// Attach load/error listeners to the script tag
-(function trackMonetagScript() {
-    const script = document.querySelector(`script[data-sdk="${MONETAG_SDK_FN}"]`);
-    if (!script) {
-        console.error(`[Monetag] Script tag with data-sdk="${MONETAG_SDK_FN}" NOT FOUND in DOM.`);
-        monetagSDKLoadError = 'Script tag missing. Check HTML <head>.';
-        return;
-    }
-    script.addEventListener('load', () => {
-        console.log('[Monetag] Script tag load event fired ✅');
-        setTimeout(() => {
-            if (typeof window[MONETAG_SDK_FN] === 'function') {
-                monetagSDKReady = true;
-                console.log(`[Monetag] Global function ${MONETAG_SDK_FN} registered ✅`);
-                preloadMonetagAd();
-            } else {
-                monetagSDKLoadError = `Script loaded but ${MONETAG_SDK_FN} not registered. Check zone ID (must be MAIN zone).`;
-                console.error(`[Monetag] ${monetagSDKLoadError}`);
-            }
-        }, 500);
-    });
-    script.addEventListener('error', (e) => {
-        monetagSDKLoadError = 'Script failed to load from libtl.com. Check network/adblock/VPN/HTTPS.';
-        console.error('[Monetag] Script tag error ❌', e, monetagSDKLoadError);
-    });
-})();
-
-// Preload ad once SDK is ready (reduces delay on first unlock)
-async function preloadMonetagAd() {
-    try {
-        await waitForMonetagSDK(3000);
-        const fn = window[MONETAG_SDK_FN];
-        await fn({ type: 'preload', ymid: 'app_init' });
-        console.log('[Monetag] Ad preloaded successfully ✅');
-    } catch (e) {
-        console.warn('[Monetag] Preload failed (non-fatal):', e.message);
-    }
-}
-
-// ---------- THEME ----------
 window.toggleDarkMode = () => {
     document.documentElement.classList.toggle('dark');
     const isDark = document.documentElement.classList.contains('dark');
@@ -329,9 +230,8 @@ if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && w
     document.getElementById('theme-icon').className = 'fas fa-moon text-white';
 }
 
-// ---------- TRANSLATIONS ----------
 const translations = {
-    en: { main_title:"Webapp Sikho", main_subtitle:"Watch Ads, Unlock & Download!", search_placeholder:"Search files...", available_files:"Available Files", unlock_btn:"Watch Ad to Unlock", loading_ad:"Loading Ad...", wait_text:"Please wait {cd}s...", progress_text:"Progress: {count}/{req} Ads watched", unlocked_msg:"Unlocked Successfully!", ad_failed:"Ad Failed. Retry", download_default:"Download", nav_home:"Home", nav_history:"History", history_title:"Downloads", history_subtitle:"Files you have unlocked", empty_history:"No files unlocked yet.", screenshots:"Screenshots", about_app:"About this file", reviews:"Ratings & Reviews", rate_this:"Rate this file", submit_review:"Submit Review", update_review:"Update Review", no_reviews:"No reviews yet. Be the first to review!" },
+    en: { main_title:"XBI TECH", main_subtitle:"Watch Ads, Unlock & Download!", search_placeholder:"Search files...", available_files:"Available Files", unlock_btn:"Watch Ad to Unlock", loading_ad:"Loading Ad...", wait_text:"Please wait {cd}s...", progress_text:"Progress: {count}/{req} Ads watched", unlocked_msg:"Unlocked Successfully!", ad_failed:"Ad Failed. Retry", download_default:"Download", nav_home:"Home", nav_history:"History", history_title:"Downloads", history_subtitle:"Files you have unlocked", empty_history:"No files unlocked yet.", screenshots:"Screenshots", about_app:"About this file", reviews:"Ratings & Reviews", rate_this:"Rate this file", submit_review:"Submit Review", update_review:"Update Review", no_reviews:"No reviews yet. Be the first to review!" },
     hi: { main_title:"वेबऐप सीखो", main_subtitle:"विज्ञापन देखें और मुफ्त डाउनलोड करें!", search_placeholder:"फाइलें खोजें...", available_files:"उपलब्ध फाइलें", unlock_btn:"अनलॉक के लिए विज्ञापन देखें", loading_ad:"विज्ञापन लोड हो रहा है...", wait_text:"कृपया रुकें {cd}s...", progress_text:"प्रगति: {count}/{req} विज्ञापन देखे गए", unlocked_msg:"फाइल अनलॉक हो गई!", ad_failed:"विफल। पुनः प्रयास करें", download_default:"डाउनलोड", nav_home:"होम", nav_history:"इतिहास", history_title:"डाउनलोड्स", history_subtitle:"आपकी अनलॉक की गई फाइलें", empty_history:"अभी तक कोई फाइल अनलॉक नहीं की गई।", screenshots:"स्क्रीनशॉट्स", about_app:"इस फाइल के बारे में", reviews:"रेटिंग और समीक्षाएं", rate_this:"इस फाइल को रेट करें", submit_review:"समीक्षा जमा करें", update_review:"समीक्षा अपडेट करें", no_reviews:"अभी तक कोई समीक्षा नहीं। पहली समीक्षा लिखें!" },
     bn: { main_title:"ওয়েবঅ্যাপ শিখুন", main_subtitle:"বিজ্ঞাপন দেখুন এবং ডাউনলোড করুন!", search_placeholder:"ফাইল খুঁজুন...", available_files:"উপলব্ধ ফাইল", unlock_btn:"আনলক করতে বিজ্ঞাপন দেখুন", loading_ad:"বিজ্ঞাপন লোড হচ্ছে...", wait_text:"অপেক্ষা করুন {cd}s...", progress_text:"অগ্রগতি: {count}/{req} বিজ্ঞাপন দেখা হয়েছে", unlocked_msg:"আনলক সফল হয়েছে!", ad_failed:"ব্যর্থ। আবার চেষ্টা করুন", download_default:"ডাউনলোড", nav_home:"হোম", nav_history:"ইতিহাস", history_title:"ডাউনলোডস", history_subtitle:"আপনার আনলক করা ফাইলগুলি", empty_history:"এখনও কোনও ফাইল আনলক করা হয়নি।", screenshots:"স্ক্রিনশট", about_app:"এই ফাইল সম্পর্কে", reviews:"রেটিং এবং পর্যালোচনা", rate_this:"এই ফাইলটি রেট করুন", submit_review:"পর্যালোচনা জমা দিন", update_review:"পর্যালোচনা আপডেট করুন", no_reviews:"এখনও কোন পর্যালোচনা নেই। প্রথম হন!" }
 };
@@ -366,7 +266,6 @@ function applyLanguage(lang) {
     document.getElementById('language-modal').classList.add('hidden');
 }
 
-// ---------- SKELETON ----------
 function showSkeletonLoader() {
     const grid = document.getElementById('files-grid');
     grid.innerHTML = '';
@@ -383,7 +282,6 @@ function showSkeletonLoader() {
     }
 }
 
-// ---------- LOAD DATA ----------
 async function loadData() {
     showSkeletonLoader();
     try {
@@ -454,7 +352,6 @@ async function loadData() {
     } catch (e) { console.error("Files error", e); }
 }
 
-// ---------- RENDER FILES ----------
 function renderFiles() {
     const grid = document.getElementById('files-grid');
     grid.innerHTML = '';
@@ -481,7 +378,6 @@ function renderFiles() {
     });
 }
 
-// ---------- DETAILS ----------
 window.openDetails = (id) => {
     currentFileId = id;
     const file = allFiles.find(f => f.id === id);
@@ -534,7 +430,6 @@ window.closeImageViewer = () => {
 };
 document.getElementById('image-viewer').addEventListener('click', e => { if (e.target.id === 'image-viewer') window.closeImageViewer(); });
 
-// ---------- REVIEWS ----------
 function renderReviews(file) {
     const list = document.getElementById('reviews-list');
     const avgLabel = document.getElementById('detail-rating-avg');
@@ -638,9 +533,15 @@ document.getElementById('submit-review-btn').addEventListener('click', async () 
     } catch (e) { console.error("Save review error", e); showToast("DB save failed"); }
 });
 
-// ==========================================
-// ========== MONETAG AD (FIXED) ============
-// ==========================================
+async function showMonetagAd(ymid) {
+    const fnName = `show_${MONETAG_ZONE_ID}`;
+    const fn = window[fnName];
+    if (typeof fn !== 'function') {
+        throw new Error(`Monetag SDK not loaded (missing ${fnName}). Check <script> tag.`);
+    }
+    await fn({ ymid });
+}
+
 function updateDetailButtonState(file) {
     const req = parseInt(file.required_ads) || 5;
     const count = parseInt(localStorage.getItem(`adCount_${file.id}`)) || 0;
@@ -666,25 +567,8 @@ window.unlockFile = async (id, req) => {
     if (!btn || btn.disabled) return;
     btn.disabled = true;
     btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span>${getText('loading_ad')}</span>`;
-
     try {
-        // ✅ STEP 1: Wait for SDK to be ready (handles slow mobile network / async load)
-        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span>SDK load ho raha hai...</span>`;
-        await waitForMonetagSDK(12000);
-
-        // ✅ STEP 2: Call the ad function
-        const fn = window[MONETAG_SDK_FN];
-        if (typeof fn !== 'function') {
-            throw new Error(`Global ${MONETAG_SDK_FN} is not a function even after wait.`);
-        }
-
-        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span>${getText('loading_ad')}</span>`;
-        const uniqueEventId = `unlock_${id}_${Date.now()}`;
-        console.log(`[Monetag] Requesting ad. ymid = ${uniqueEventId}`);
-        await fn({ ymid: uniqueEventId });
-        console.log('[Monetag] Ad completed ✅');
-
-        // ✅ STEP 3: Reward logic
+        await showMonetagAd(tgUser.id);
         let count = parseInt(localStorage.getItem(`adCount_${id}`)) || 0;
         count++;
         localStorage.setItem(`adCount_${id}`, count);
@@ -713,20 +597,12 @@ window.unlockFile = async (id, req) => {
             }, 1000);
         }
     } catch (e) {
-        console.error("[Monetag] Ad error:", e);
-        const msg = (e && e.message) ? e.message : '';
-        // Distinguish SDK load failure vs ad failure
-        if (msg.includes('SDK') || msg.includes('timeout') || msg.includes('not a function')) {
-            showToast('Ad SDK load nahi hua. Internet/VPN/Adblock check karein, ya thodi der baad try karein.');
-        } else {
-            showToast('Ad available nahi hai. Thodi der baad try karein.');
-        }
+        console.error("Monetag ad error", e);
         btn.disabled = false;
-        btn.innerHTML = `<i class="fas fa-exclamation-triangle"></i> <span>Retry</span>`;
+        btn.innerHTML = `<i class="fas fa-exclamation-triangle"></i> <span>${getText('ad_failed')}</span>`;
     }
 };
 
-// ---------- HISTORY ----------
 function saveToHistory(fileId) {
     let history = JSON.parse(localStorage.getItem('downloadHistory') || '[]');
     if (!history.includes(fileId)) { history.push(fileId); localStorage.setItem('downloadHistory', JSON.stringify(history)); }
@@ -763,7 +639,6 @@ function renderHistory() {
     }
 }
 
-// ---------- TABS ----------
 window.switchTab = (tab) => {
     const homeView = document.getElementById('home-view');
     const historyView = document.getElementById('history-view');
@@ -781,16 +656,14 @@ window.switchTab = (tab) => {
     }
 };
 
-// ---------- TOAST ----------
 function showToast(msg) {
     const t = document.getElementById('toast');
     document.getElementById('toast-message').textContent = msg;
     t.classList.remove('-translate-y-24', 'opacity-0');
     t.classList.add('translate-y-0', 'opacity-100');
-    setTimeout(() => { t.classList.add('-translate-y-24', 'opacity-0'); t.classList.remove('translate-y-0', 'opacity-100'); }, 3500);
+    setTimeout(() => { t.classList.add('-translate-y-24', 'opacity-0'); t.classList.remove('translate-y-0', 'opacity-100'); }, 3000);
 }
 
-// ---------- INIT ----------
 document.getElementById('searchInput').addEventListener('input', renderFiles);
 document.querySelectorAll('.lang-btn').forEach(btn => btn.addEventListener('click', () => applyLanguage(btn.dataset.lang)));
 
@@ -799,16 +672,6 @@ async function init() {
         await sb.auth.signInAnonymously();
     } catch (e) { console.warn("Anonymous auth failed (check Auth settings)", e); }
     await loadData();
-
-    // Log SDK readiness after page load
-    setTimeout(async () => {
-        if (typeof window[MONETAG_SDK_FN] === 'function') {
-            console.log(`[Monetag] ${MONETAG_SDK_FN} is available ✅`);
-        } else {
-            console.warn(`[Monetag] ${MONETAG_SDK_FN} still NOT available after 2s ❌`);
-            console.warn('[Monetag] Check: libtl.com reachability, VPN/adblock, zone ID (main vs sub).');
-        }
-    }, 2000);
 }
 
 const savedLang = localStorage.getItem('userLanguage');
