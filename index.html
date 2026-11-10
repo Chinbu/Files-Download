@@ -14,8 +14,10 @@
     <!-- ✅ Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-    <!-- ✅ Monetag TMA SDK -->
-    <script src='//libtl.com/sdk.js' data-zone='12233684' data-sdk='show_12233684'></script>
+    <!-- ✅ Monetag TMA SDK — explicit HTTPS (protocol-relative `//` mobile WebView me kabhi fail hota hai) -->
+    <script src="https://libtl.com/sdk.js"
+            data-zone="12233684"
+            data-sdk="show_12233684"></script>
 
     <!-- 🐞 ERUDA: Mobile debug console (production me hata dena) -->
     <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
@@ -190,6 +192,7 @@
 const SUPABASE_URL = 'https://vjzwezrksjeiwxpsglas.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_-PPeh15CPZyiwAQBVt1AVQ_xlTug8PC';
 const MONETAG_ZONE_ID = '12233684';
+const MONETAG_SDK_FN = `show_${MONETAG_ZONE_ID}`;
 // ================================
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -202,7 +205,6 @@ let userRating = 0;
 let slideInterval = null;
 
 // ---------- TELEGRAM INIT ----------
-// Ready + Expand MUST run before any Monetag ad call
 let tg = null;
 let tgUser = { id: null, name: "Guest User" };
 try {
@@ -230,6 +232,87 @@ if (!tgUser.id) {
     tgUser.id = storedId;
 }
 document.getElementById('user-display-name').textContent = tgUser.name;
+
+// ==========================================
+// ========== MONETAG SDK LOADER ============
+// ==========================================
+let monetagSDKReady = false;
+let monetagSDKLoadError = null;
+
+// Poll for global function (handles async script load)
+function waitForMonetagSDK(timeoutMs = 12000) {
+    return new Promise((resolve, reject) => {
+        if (typeof window[MONETAG_SDK_FN] === 'function') {
+            monetagSDKReady = true;
+            return resolve();
+        }
+        if (monetagSDKLoadError) {
+            return reject(new Error(monetagSDKLoadError));
+        }
+
+        let elapsed = 0;
+        const interval = 200;
+        console.log(`[Monetag] Waiting for ${MONETAG_SDK_FN}... (timeout ${timeoutMs}ms)`);
+
+        const timer = setInterval(() => {
+            elapsed += interval;
+            if (typeof window[MONETAG_SDK_FN] === 'function') {
+                clearInterval(timer);
+                monetagSDKReady = true;
+                console.log(`[Monetag] SDK ready after ${elapsed}ms ✅`);
+                resolve();
+            } else if (elapsed >= timeoutMs) {
+                clearInterval(timer);
+                const msg = `Monetag SDK load timeout (${timeoutMs}ms). ` +
+                    `Possible causes: (1) libtl.com blocked by network/adblock/VPN, ` +
+                    `(2) Telegram WebView restriction, (3) wrong zone ID (must be MAIN zone, not sub-zone). ` +
+                    `Expected global: ${MONETAG_SDK_FN}`;
+                monetagSDKLoadError = msg;
+                console.error(`[Monetag] ${msg}`);
+                reject(new Error(msg));
+            }
+        }, interval);
+    });
+}
+
+// Attach load/error listeners to the script tag
+(function trackMonetagScript() {
+    const script = document.querySelector(`script[data-sdk="${MONETAG_SDK_FN}"]`);
+    if (!script) {
+        console.error(`[Monetag] Script tag with data-sdk="${MONETAG_SDK_FN}" NOT FOUND in DOM.`);
+        monetagSDKLoadError = 'Script tag missing. Check HTML <head>.';
+        return;
+    }
+    script.addEventListener('load', () => {
+        console.log('[Monetag] Script tag load event fired ✅');
+        setTimeout(() => {
+            if (typeof window[MONETAG_SDK_FN] === 'function') {
+                monetagSDKReady = true;
+                console.log(`[Monetag] Global function ${MONETAG_SDK_FN} registered ✅`);
+                preloadMonetagAd();
+            } else {
+                monetagSDKLoadError = `Script loaded but ${MONETAG_SDK_FN} not registered. Check zone ID (must be MAIN zone).`;
+                console.error(`[Monetag] ${monetagSDKLoadError}`);
+            }
+        }, 500);
+    });
+    script.addEventListener('error', (e) => {
+        monetagSDKLoadError = 'Script failed to load from libtl.com. Check network/adblock/VPN/HTTPS.';
+        console.error('[Monetag] Script tag error ❌', e, monetagSDKLoadError);
+    });
+})();
+
+// Preload ad once SDK is ready (reduces delay on first unlock)
+async function preloadMonetagAd() {
+    try {
+        await waitForMonetagSDK(3000);
+        const fn = window[MONETAG_SDK_FN];
+        await fn({ type: 'preload', ymid: 'app_init' });
+        console.log('[Monetag] Ad preloaded successfully ✅');
+    } catch (e) {
+        console.warn('[Monetag] Preload failed (non-fatal):', e.message);
+    }
+}
 
 // ---------- THEME ----------
 window.toggleDarkMode = () => {
@@ -558,31 +641,6 @@ document.getElementById('submit-review-btn').addEventListener('click', async () 
 // ==========================================
 // ========== MONETAG AD (FIXED) ============
 // ==========================================
-async function showMonetagAd(ymid) {
-    // Ensure Telegram WebApp is ready BEFORE ad call
-    // (Monetag SDK needs this to detect safe area & send {telegram_id})
-    if (window.Telegram && window.Telegram.WebApp) {
-        try {
-            window.Telegram.WebApp.ready();
-        } catch (e) { console.warn('[Telegram] ready() error:', e); }
-    }
-
-    const fnName = `show_${MONETAG_ZONE_ID}`;
-    const fn = window[fnName];
-
-    if (typeof fn !== 'function') {
-        console.error(`[Monetag] SDK function ${fnName} not found on window.`);
-        console.log('[Monetag] Available window.show_* functions:', 
-            Object.keys(window).filter(k => k.startsWith('show_'))
-        );
-        throw new Error(`Monetag SDK not loaded (missing ${fnName}).`);
-    }
-
-    console.log('[Monetag] Requesting ad. ymid =', ymid);
-    await fn({ ymid });
-    console.log('[Monetag] Ad completed successfully.');
-}
-
 function updateDetailButtonState(file) {
     const req = parseInt(file.required_ads) || 5;
     const count = parseInt(localStorage.getItem(`adCount_${file.id}`)) || 0;
@@ -608,12 +666,25 @@ window.unlockFile = async (id, req) => {
     if (!btn || btn.disabled) return;
     btn.disabled = true;
     btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span>${getText('loading_ad')}</span>`;
-    try {
-        // ✅ FIX: ymid = unique EVENT id (NOT Telegram User ID)
-        // Telegram user ID SDK khud {telegram_id} macro mein bhejta hai
-        const uniqueEventId = `unlock_${id}_${Date.now()}`;
-        await showMonetagAd(uniqueEventId);
 
+    try {
+        // ✅ STEP 1: Wait for SDK to be ready (handles slow mobile network / async load)
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span>SDK load ho raha hai...</span>`;
+        await waitForMonetagSDK(12000);
+
+        // ✅ STEP 2: Call the ad function
+        const fn = window[MONETAG_SDK_FN];
+        if (typeof fn !== 'function') {
+            throw new Error(`Global ${MONETAG_SDK_FN} is not a function even after wait.`);
+        }
+
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span>${getText('loading_ad')}</span>`;
+        const uniqueEventId = `unlock_${id}_${Date.now()}`;
+        console.log(`[Monetag] Requesting ad. ymid = ${uniqueEventId}`);
+        await fn({ ymid: uniqueEventId });
+        console.log('[Monetag] Ad completed ✅');
+
+        // ✅ STEP 3: Reward logic
         let count = parseInt(localStorage.getItem(`adCount_${id}`)) || 0;
         count++;
         localStorage.setItem(`adCount_${id}`, count);
@@ -642,10 +713,16 @@ window.unlockFile = async (id, req) => {
             }, 1000);
         }
     } catch (e) {
-        console.error("Monetag ad error:", e);
-        showToast((e && e.message) ? e.message : getText('ad_failed'));
+        console.error("[Monetag] Ad error:", e);
+        const msg = (e && e.message) ? e.message : '';
+        // Distinguish SDK load failure vs ad failure
+        if (msg.includes('SDK') || msg.includes('timeout') || msg.includes('not a function')) {
+            showToast('Ad SDK load nahi hua. Internet/VPN/Adblock check karein, ya thodi der baad try karein.');
+        } else {
+            showToast('Ad available nahi hai. Thodi der baad try karein.');
+        }
         btn.disabled = false;
-        btn.innerHTML = `<i class="fas fa-exclamation-triangle"></i> <span>${getText('ad_failed')}</span>`;
+        btn.innerHTML = `<i class="fas fa-exclamation-triangle"></i> <span>Retry</span>`;
     }
 };
 
@@ -710,7 +787,7 @@ function showToast(msg) {
     document.getElementById('toast-message').textContent = msg;
     t.classList.remove('-translate-y-24', 'opacity-0');
     t.classList.add('translate-y-0', 'opacity-100');
-    setTimeout(() => { t.classList.add('-translate-y-24', 'opacity-0'); t.classList.remove('translate-y-0', 'opacity-100'); }, 3000);
+    setTimeout(() => { t.classList.add('-translate-y-24', 'opacity-0'); t.classList.remove('translate-y-0', 'opacity-100'); }, 3500);
 }
 
 // ---------- INIT ----------
@@ -723,15 +800,15 @@ async function init() {
     } catch (e) { console.warn("Anonymous auth failed (check Auth settings)", e); }
     await loadData();
 
-    // Log Monetag SDK availability after init
-    setTimeout(() => {
-        const fnName = `show_${MONETAG_ZONE_ID}`;
-        if (typeof window[fnName] === 'function') {
-            console.log(`[Monetag] SDK ready: ${fnName} available ✅`);
+    // Log SDK readiness after page load
+    setTimeout(async () => {
+        if (typeof window[MONETAG_SDK_FN] === 'function') {
+            console.log(`[Monetag] ${MONETAG_SDK_FN} is available ✅`);
         } else {
-            console.error(`[Monetag] SDK missing: ${fnName} NOT found ❌ — check script tag / zone ID / domain approval`);
+            console.warn(`[Monetag] ${MONETAG_SDK_FN} still NOT available after 2s ❌`);
+            console.warn('[Monetag] Check: libtl.com reachability, VPN/adblock, zone ID (main vs sub).');
         }
-    }, 1500);
+    }, 2000);
 }
 
 const savedLang = localStorage.getItem('userLanguage');
