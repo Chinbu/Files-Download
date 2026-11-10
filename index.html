@@ -30,7 +30,6 @@
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 font-sans text-gray-800 dark:text-gray-200 pb-20 transition-colors duration-300">
 
-<!-- AdBlocker Notice Banner (auto-shows if blocked) -->
 <div id="adblock-notice" class="hidden bg-red-500 text-white text-xs py-2 px-4 text-center sticky top-0 z-[55] shadow-md">
     <i class="fas fa-exclamation-triangle mr-1"></i>
     <span>AdBlocker detected — ads won't load. Please disable it to unlock downloads.</span>
@@ -146,7 +145,7 @@
         </div>
     </div>
     <div class="fixed bottom-0 w-full bg-white dark:bg-gray-900 border-t dark:border-gray-800 p-4 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.1)] z-20">
-        <div id="detail-actions" class="max-w-4xl mx-auto flex gap-3"></div>
+        <div id="detail-actions" class="max-w-4xl mx-auto flex flex-col gap-2"></div>
     </div>
 </div>
 
@@ -180,7 +179,6 @@
     </div>
 </div>
 
-<!-- ========== ADBLOCK MODAL ========== -->
 <div id="adblock-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-[85] flex items-center justify-center p-4">
     <div id="adblock-modal-box" class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
         <div class="bg-gradient-to-br from-red-500 to-red-600 p-6 text-center text-white">
@@ -195,9 +193,7 @@
                 Downloads unlock karne ke liye <b>ads dekhna zaroori</b> hai. Aapke browser me adblocker active hai jiski wajah se ads load nahi ho pa rahe.
             </p>
             <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-xs text-amber-900 dark:text-amber-200 mb-4">
-                <p class="font-bold mb-2 flex items-center gap-1">
-                    <i class="fas fa-lightbulb"></i> Adblocker off kaise karein:
-                </p>
+                <p class="font-bold mb-2 flex items-center gap-1"><i class="fas fa-lightbulb"></i> Adblocker off kaise karein:</p>
                 <ol class="list-decimal ml-4 space-y-1">
                     <li>Browser me <b>AdBlock / uBlock / Brave Shield</b> extension off karo</li>
                     <li>Is page ko <b>refresh</b> karo</li>
@@ -228,6 +224,10 @@
 const SUPABASE_URL = 'https://vjzwezrksjeiwxpsglas.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_-PPeh15CPZyiwAQBVt1AVQ_xlTug8PC';
 const MONETAG_ZONE_ID = '12233684';
+
+// ⏰ UNLOCK VALIDITY — Yahan se duration change karo
+const UNLOCK_VALIDITY_HOURS = 24;                                 // 24h, 48h, 168h (7d), 720h (30d)
+const UNLOCK_VALIDITY_MS = UNLOCK_VALIDITY_HOURS * 60 * 60 * 1000;
 // ================================
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -243,8 +243,7 @@ let tgUser = { id: null, name: "Guest User" };
 try {
     if (window.Telegram && window.Telegram.WebApp) {
         const tg = window.Telegram.WebApp;
-        tg.expand();
-        tg.ready();
+        tg.expand(); tg.ready();
         if (tg.initDataUnsafe?.user) {
             tgUser.id = tg.initDataUnsafe.user.id.toString();
             tgUser.name = tg.initDataUnsafe.user.first_name || tg.initDataUnsafe.user.username;
@@ -262,6 +261,116 @@ if (!tgUser.id) {
 }
 document.getElementById('user-display-name').textContent = tgUser.name;
 
+// ========== UNLOCK STATE HELPERS (with 24h expiry) ==========
+function getUnlockState(fileId, req) {
+    const raw = localStorage.getItem(`unlock_${fileId}`);
+    if (!raw) return { count: 0, isUnlocked: false };
+    try {
+        const data = JSON.parse(raw);
+        const now = Date.now();
+
+        // Unlocked but expired
+        if (data.count >= req && data.expiresAt && now > data.expiresAt) {
+            localStorage.removeItem(`unlock_${fileId}`);
+            return { count: 0, isUnlocked: false, expired: true };
+        }
+        // Not unlocked & progress is stale
+        if (data.count < req && data.lastUpdated && (now - data.lastUpdated) > UNLOCK_VALIDITY_MS) {
+            localStorage.removeItem(`unlock_${fileId}`);
+            return { count: 0, isUnlocked: false, expired: data.count > 0 };
+        }
+
+        const isUnlocked = data.count >= req;
+        let hoursRemaining = 0, minutesRemaining = 0;
+        if (isUnlocked && data.expiresAt) {
+            const msLeft = Math.max(0, data.expiresAt - now);
+            hoursRemaining = Math.floor(msLeft / (1000 * 60 * 60));
+            minutesRemaining = Math.floor((msLeft % (1000 * 60 * 60)) / (1000 * 60));
+        }
+        return { count: data.count, isUnlocked, hoursRemaining, minutesRemaining, expiresAt: data.expiresAt };
+    } catch (e) {
+        return { count: 0, isUnlocked: false };
+    }
+}
+
+function saveUnlockProgress(fileId, count, req) {
+    const existing = JSON.parse(localStorage.getItem(`unlock_${fileId}`) || '{}');
+    const wasAlreadyUnlocked = (existing.count || 0) >= req;
+    const data = {
+        count,
+        lastUpdated: Date.now(),
+        expiresAt: (count >= req && !wasAlreadyUnlocked)
+            ? Date.now() + UNLOCK_VALIDITY_MS
+            : existing.expiresAt
+    };
+    localStorage.setItem(`unlock_${fileId}`, JSON.stringify(data));
+}
+
+function formatExpiryTime(hoursRemaining, minutesRemaining) {
+    if (hoursRemaining > 0) return `${hoursRemaining}h ${minutesRemaining}m`;
+    if (minutesRemaining > 0) return `${minutesRemaining}m`;
+    return `<1m`;
+}
+
+// ========== ADBLOCK DETECTION ==========
+function isMonetagReady() { return typeof window[`show_${MONETAG_ZONE_ID}`] === 'function'; }
+
+async function detectAdBlocker() {
+    try {
+        const bait = document.createElement('div');
+        bait.className = 'ad-banner adsbox pub_300x250 text-ad ad-placeholder';
+        bait.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;';
+        bait.innerHTML = '&nbsp;';
+        document.body.appendChild(bait);
+        await new Promise(r => setTimeout(r, 150));
+        const blocked = bait.offsetHeight === 0 || bait.clientHeight === 0 || bait.offsetParent === null;
+        bait.remove();
+        if (blocked) return true;
+    } catch (e) {}
+
+    if (!isMonetagReady()) {
+        for (let i = 0; i < 20; i++) {
+            await new Promise(r => setTimeout(r, 100));
+            if (isMonetagReady()) break;
+        }
+        if (!isMonetagReady()) return true;
+    }
+    return false;
+}
+
+window.showAdblockModal = () => {
+    document.getElementById('adblock-modal').classList.remove('hidden');
+    const box = document.getElementById('adblock-modal-box');
+    box.classList.remove('shake');
+    void box.offsetWidth;
+    box.classList.add('shake');
+};
+window.closeAdblockModal = () => document.getElementById('adblock-modal').classList.add('hidden');
+window.retryAdblockCheck = async () => {
+    const btn = document.getElementById('adblock-retry-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Checking...';
+    const blocked = await detectAdBlocker();
+    if (!blocked) {
+        window.closeAdblockModal();
+        document.getElementById('adblock-notice').classList.add('hidden');
+        showToast('AdBlocker off ho gaya! Ab ads dekh sakte ho ✅');
+    } else {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-redo"></i> Still Blocked - Try Again';
+        const box = document.getElementById('adblock-modal-box');
+        box.classList.remove('shake');
+        void box.offsetWidth;
+        box.classList.add('shake');
+    }
+};
+
+async function runInitialAdblockCheck() {
+    const blocked = await detectAdBlocker();
+    document.getElementById('adblock-notice').classList.toggle('hidden', !blocked);
+}
+
+// ========== DARK MODE ==========
 window.toggleDarkMode = () => {
     document.documentElement.classList.toggle('dark');
     const isDark = document.documentElement.classList.contains('dark');
@@ -310,77 +419,6 @@ function applyLanguage(lang) {
         if (file) { updateDetailButtonState(file); renderReviews(file); }
     }
     document.getElementById('language-modal').classList.add('hidden');
-}
-
-// ========== ADBLOCK DETECTION ==========
-function isMonetagReady() {
-    return typeof window[`show_${MONETAG_ZONE_ID}`] === 'function';
-}
-
-async function detectAdBlocker() {
-    // Check 1: Bait element (standard detection)
-    try {
-        const bait = document.createElement('div');
-        bait.className = 'ad-banner adsbox pub_300x250 text-ad ad-placeholder';
-        bait.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;';
-        bait.innerHTML = '&nbsp;';
-        document.body.appendChild(bait);
-        await new Promise(r => setTimeout(r, 150));
-        const blocked = bait.offsetHeight === 0 || bait.clientHeight === 0 || bait.offsetParent === null;
-        bait.remove();
-        if (blocked) return true;
-    } catch (e) { /* ignore */ }
-
-    // Check 2: Monetag SDK function (specific to our ad)
-    if (!isMonetagReady()) {
-        // Give it more time (slow networks)
-        for (let i = 0; i < 20; i++) {
-            await new Promise(r => setTimeout(r, 100));
-            if (isMonetagReady()) break;
-        }
-        if (!isMonetagReady()) return true;
-    }
-    return false;
-}
-
-window.showAdblockModal = () => {
-    document.getElementById('adblock-modal').classList.remove('hidden');
-    const box = document.getElementById('adblock-modal-box');
-    box.classList.remove('shake');
-    void box.offsetWidth;
-    box.classList.add('shake');
-};
-window.closeAdblockModal = () => {
-    document.getElementById('adblock-modal').classList.add('hidden');
-};
-window.retryAdblockCheck = async () => {
-    const btn = document.getElementById('adblock-retry-btn');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Checking...';
-
-    const blocked = await detectAdBlocker();
-
-    if (!blocked) {
-        window.closeAdblockModal();
-        document.getElementById('adblock-notice').classList.add('hidden');
-        showToast('AdBlocker off ho gaya! Ab ads dekh sakte ho ✅');
-    } else {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-redo"></i> Still Blocked - Try Again';
-        const box = document.getElementById('adblock-modal-box');
-        box.classList.remove('shake');
-        void box.offsetWidth;
-        box.classList.add('shake');
-    }
-};
-
-async function runInitialAdblockCheck() {
-    const blocked = await detectAdBlocker();
-    if (blocked) {
-        document.getElementById('adblock-notice').classList.remove('hidden');
-    } else {
-        document.getElementById('adblock-notice').classList.add('hidden');
-    }
 }
 
 function showSkeletonLoader() {
@@ -432,8 +470,7 @@ async function loadData() {
         const { data: slides } = await sb.from('sliders').select('*').order('created_at', { ascending: false });
         if (slides && slides.length > 0) {
             sw.classList.remove('hidden');
-            sTrack.innerHTML = '';
-            sDots.innerHTML = '';
+            sTrack.innerHTML = ''; sDots.innerHTML = '';
             slides.forEach((s, idx) => {
                 const div = document.createElement('div');
                 div.className = `w-full h-full flex-shrink-0 ${s.link_url ? 'cursor-pointer' : ''}`;
@@ -443,8 +480,7 @@ async function loadData() {
                 if (slides.length > 1) {
                     const dot = document.createElement('div');
                     dot.className = `w-2 h-2 rounded-full ${idx === 0 ? 'bg-white' : 'bg-white/50'} transition-colors`;
-                    dot.id = `dot-${idx}`;
-                    sDots.appendChild(dot);
+                    dot.id = `dot-${idx}`; sDots.appendChild(dot);
                 }
             });
             if (slides.length > 1) {
@@ -534,8 +570,7 @@ window.openImageViewer = (src) => {
     const viewer = document.getElementById('image-viewer');
     const img = document.getElementById('image-viewer-img');
     img.src = src;
-    viewer.classList.remove('hidden');
-    viewer.classList.add('flex');
+    viewer.classList.remove('hidden'); viewer.classList.add('flex');
     setTimeout(() => { viewer.classList.replace('opacity-0', 'opacity-100'); img.classList.replace('scale-95', 'scale-100'); }, 10);
 };
 window.closeImageViewer = () => {
@@ -606,8 +641,7 @@ window.editReviewForm = (userId) => {
     }
 };
 window.cancelEditReview = () => {
-    userRating = 0;
-    updateStarUI();
+    userRating = 0; updateStarUI();
     document.getElementById('review-text').value = '';
     document.getElementById('submit-review-btn').textContent = getText('submit_review');
     document.getElementById('cancel-edit-btn').classList.add('hidden');
@@ -640,19 +674,11 @@ document.getElementById('submit-review-btn').addEventListener('click', async () 
     window.cancelEditReview();
     showToast("Review saved successfully!");
     try {
-        await sb.rpc('upsert_review', {
-            file_id: currentFileId,
-            p_user_id: tgUser.id,
-            p_user: tgUser.name,
-            p_rating: userRating,
-            p_text: text
-        });
+        await sb.rpc('upsert_review', { file_id: currentFileId, p_user_id: tgUser.id, p_user: tgUser.name, p_rating: userRating, p_text: text });
     } catch (e) { console.error("Save review error", e); showToast("DB save failed"); }
 });
 
-// ========== MONETAG REWARDED AD (with AdBlock detection) ==========
 async function showMonetagAd(ymid) {
-    // Wait up to 3 seconds for SDK to load
     let attempts = 0;
     while (!isMonetagReady() && attempts < 30) {
         await new Promise(r => setTimeout(r, 100));
@@ -666,22 +692,29 @@ async function showMonetagAd(ymid) {
     await window[`show_${MONETAG_ZONE_ID}`]({ ymid });
 }
 
+// ===== DETAIL BUTTON STATE (with expiry info) =====
 function updateDetailButtonState(file) {
     const req = parseInt(file.required_ads) || 5;
-    const count = parseInt(localStorage.getItem(`adCount_${file.id}`)) || 0;
-    const isUnlocked = count >= req;
+    const state = getUnlockState(file.id, req);
     const actionContainer = document.getElementById('detail-actions');
-    if (isUnlocked) {
+
+    if (state.isUnlocked) {
         saveToHistory(file.id);
+        const timeLeft = formatExpiryTime(state.hoursRemaining, state.minutesRemaining);
         actionContainer.innerHTML = `
-            <a href="${file.download_url}" target="_blank" class="flex-1 py-3.5 bg-green-600 hover:bg-green-700 text-white text-center rounded-xl font-bold shadow-lg flex items-center justify-center gap-2">
-                <i class="fas fa-download"></i> ${file.btn_name1 || getText('download_default')}
-            </a>
-            ${file.download_url2 ? `<a href="${file.download_url2}" target="_blank" class="flex-1 py-3.5 bg-teal-600 hover:bg-teal-700 text-white text-center rounded-xl font-bold shadow-lg flex items-center justify-center gap-2"><i class="fas fa-link"></i> ${file.btn_name2 || 'Link 2'}</a>` : ''}`;
+            <div class="flex gap-3">
+                <a href="${file.download_url}" target="_blank" class="flex-1 py-3.5 bg-green-600 hover:bg-green-700 text-white text-center rounded-xl font-bold shadow-lg flex items-center justify-center gap-2">
+                    <i class="fas fa-download"></i> ${file.btn_name1 || getText('download_default')}
+                </a>
+                ${file.download_url2 ? `<a href="${file.download_url2}" target="_blank" class="flex-1 py-3.5 bg-teal-600 hover:bg-teal-700 text-white text-center rounded-xl font-bold shadow-lg flex items-center justify-center gap-2"><i class="fas fa-link"></i> ${file.btn_name2 || 'Link 2'}</a>` : ''}
+            </div>
+            <p class="text-[11px] text-center text-gray-500 dark:text-gray-400">
+                <i class="fas fa-hourglass-half"></i> Unlocked — <b>${timeLeft}</b> tak valid hai
+            </p>`;
     } else {
         actionContainer.innerHTML = `
             <button id="unlock-action-btn" onclick="window.unlockFile('${file.id}', ${req})" class="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl font-bold shadow-lg flex items-center justify-center gap-2">
-                <i class="fas fa-lock"></i><span>${getText('unlock_btn')} (${count}/${req})</span>
+                <i class="fas fa-lock"></i><span>${getText('unlock_btn')} (${state.count}/${req})</span>
             </button>`;
     }
 }
@@ -693,11 +726,14 @@ window.unlockFile = async (id, req) => {
     btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span>${getText('loading_ad')}</span>`;
     try {
         await showMonetagAd(tgUser.id);
-        let count = parseInt(localStorage.getItem(`adCount_${id}`)) || 0;
-        count++;
-        localStorage.setItem(`adCount_${id}`, count);
-        if (count >= req) {
-            showToast(getText('unlocked_msg'));
+        const state = getUnlockState(id, req);
+        let newCount = state.count + 1;
+
+        saveUnlockProgress(id, newCount, req);
+
+        if (newCount >= req) {
+            const timeLeft = formatExpiryTime(Math.floor(UNLOCK_VALIDITY_MS / (1000 * 60 * 60)), 0);
+            showToast(`Unlocked! ${timeLeft} tak valid hai ✅`);
             saveToHistory(id);
             try { await sb.rpc('increment_downloads', { file_id: id }); }
             catch (e) { console.error("Download increment error", e); }
@@ -707,10 +743,9 @@ window.unlockFile = async (id, req) => {
             document.getElementById('detail-downloads').textContent = formatNumber(file.downloads);
             renderFiles();
             renderHistory();
-            // Re-check adblock status — it might now be off
             document.getElementById('adblock-notice').classList.add('hidden');
         } else {
-            showToast(getText('progress_text', { count, req }));
+            showToast(getText('progress_text', { count: newCount, req }));
             let cd = timerDuration;
             const int = setInterval(() => {
                 btn.innerHTML = `<i class="fas fa-clock"></i> <span>${getText('wait_text', { cd })}</span>`;
@@ -718,20 +753,19 @@ window.unlockFile = async (id, req) => {
                 if (cd < 0) {
                     clearInterval(int);
                     btn.disabled = false;
-                    btn.innerHTML = `<i class="fas fa-lock"></i> <span>${getText('unlock_btn')} (${count}/${req})</span>`;
+                    btn.innerHTML = `<i class="fas fa-lock"></i> <span>${getText('unlock_btn')} (${newCount}/${req})</span>`;
                 }
             }, 1000);
         }
     } catch (e) {
         console.error("Monetag ad error", e);
         if (e.code === 'ADBLOCK' || e.message === 'ADBLOCK_DETECTED') {
-            // Show the adblocker modal
             btn.disabled = false;
-            btn.innerHTML = `<i class="fas fa-lock"></i><span>${getText('unlock_btn')} (${count}/${req})</span>`;
+            const state = getUnlockState(id, req);
+            btn.innerHTML = `<i class="fas fa-lock"></i><span>${getText('unlock_btn')} (${state.count}/${req})</span>`;
             document.getElementById('adblock-notice').classList.remove('hidden');
             window.showAdblockModal();
         } else {
-            // General ad error (network, etc.)
             btn.disabled = false;
             btn.innerHTML = `<i class="fas fa-exclamation-triangle"></i> <span>${getText('ad_failed')}</span>`;
         }
@@ -747,13 +781,15 @@ function renderHistory() {
     const historyList = document.getElementById('history-list');
     const emptyState = document.getElementById('empty-history');
     let historyIds = JSON.parse(localStorage.getItem('downloadHistory') || '[]');
+
+    // Filter: only show still-valid unlocks
     historyIds = historyIds.filter(id => {
         const file = allFiles.find(f => f.id === id);
         if (!file) return false;
         const req = parseInt(file.required_ads) || 5;
-        const count = parseInt(localStorage.getItem(`adCount_${id}`)) || 0;
-        return count >= req;
+        return getUnlockState(id, req).isUnlocked;
     });
+
     historyList.innerHTML = '';
     if (historyIds.length === 0) emptyState.classList.remove('hidden');
     else {
@@ -761,12 +797,18 @@ function renderHistory() {
         historyIds.forEach(id => {
             const file = allFiles.find(f => f.id === id);
             if (file) {
+                const req = parseInt(file.required_ads) || 5;
+                const state = getUnlockState(id, req);
+                const timeLeft = formatExpiryTime(state.hoursRemaining, state.minutesRemaining);
                 const item = document.createElement('div');
                 item.className = 'bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-transparent dark:border-gray-700 flex items-center gap-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700';
                 item.onclick = () => window.openDetails(file.id);
                 item.innerHTML = `
                     <img src="${file.thumbnail_url}" class="w-16 h-16 rounded-xl object-cover shadow-sm bg-gray-100 dark:bg-gray-700">
-                    <div class="flex-1"><h3 class="font-bold text-gray-800 dark:text-white line-clamp-1">${file.title}</h3><p class="text-xs text-green-600 font-semibold mt-1"><i class="fas fa-check-circle"></i> Unlocked</p></div>
+                    <div class="flex-1">
+                        <h3 class="font-bold text-gray-800 dark:text-white line-clamp-1">${file.title}</h3>
+                        <p class="text-xs text-green-600 font-semibold mt-1"><i class="fas fa-check-circle"></i> Unlocked — ${timeLeft} left</p>
+                    </div>
                     <button class="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 w-10 h-10 rounded-full flex items-center justify-center"><i class="fas fa-chevron-right"></i></button>`;
                 historyList.appendChild(item);
             }
@@ -803,11 +845,9 @@ document.getElementById('searchInput').addEventListener('input', renderFiles);
 document.querySelectorAll('.lang-btn').forEach(btn => btn.addEventListener('click', () => applyLanguage(btn.dataset.lang)));
 
 async function init() {
-    try {
-        await sb.auth.signInAnonymously();
-    } catch (e) { console.warn("Anonymous auth failed (check Auth settings)", e); }
+    try { await sb.auth.signInAnonymously(); }
+    catch (e) { console.warn("Anonymous auth failed", e); }
     await loadData();
-    // Detect adblocker on load (delayed to give SDK time to load)
     setTimeout(runInitialAdblockCheck, 1500);
 }
 
