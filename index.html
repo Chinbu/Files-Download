@@ -24,9 +24,18 @@
         .dark .skeleton-box { background-color: #374151; }
         .skeleton-box::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent); transform: translateX(-100%); animation: shimmer 1.5s infinite; }
         .dark .skeleton-box::after { background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent); }
+        @keyframes shake { 0%,100% { transform: translateX(0); } 20%,60% { transform: translateX(-6px); } 40%,80% { transform: translateX(6px); } }
+        .shake { animation: shake 0.4s ease-in-out; }
     </style>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 font-sans text-gray-800 dark:text-gray-200 pb-20 transition-colors duration-300">
+
+<!-- AdBlocker Notice Banner (auto-shows if blocked) -->
+<div id="adblock-notice" class="hidden bg-red-500 text-white text-xs py-2 px-4 text-center sticky top-0 z-[55] shadow-md">
+    <i class="fas fa-exclamation-triangle mr-1"></i>
+    <span>AdBlocker detected — ads won't load. Please disable it to unlock downloads.</span>
+    <button onclick="window.showAdblockModal()" class="ml-2 underline font-bold">How to fix</button>
+</div>
 
 <div id="home-view" class="container mx-auto p-4 max-w-7xl">
     <header class="bg-gradient-to-br from-indigo-600 to-purple-700 text-white p-6 rounded-2xl shadow-xl mb-6 relative overflow-hidden">
@@ -171,7 +180,44 @@
     </div>
 </div>
 
-<div id="toast" class="fixed top-6 left-1/2 transform -translate-x-1/2 -translate-y-24 opacity-0 z-[70] transition-all duration-300">
+<!-- ========== ADBLOCK MODAL ========== -->
+<div id="adblock-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-[85] flex items-center justify-center p-4">
+    <div id="adblock-modal-box" class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+        <div class="bg-gradient-to-br from-red-500 to-red-600 p-6 text-center text-white">
+            <div class="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3 backdrop-blur-sm">
+                <i class="fas fa-shield-alt text-3xl"></i>
+            </div>
+            <h3 class="text-xl font-bold mb-1">AdBlocker Detected!</h3>
+            <p class="text-xs text-red-100">Ads load nahi ho rahe</p>
+        </div>
+        <div class="p-5">
+            <p class="text-sm text-gray-700 dark:text-gray-300 mb-4 text-center">
+                Downloads unlock karne ke liye <b>ads dekhna zaroori</b> hai. Aapke browser me adblocker active hai jiski wajah se ads load nahi ho pa rahe.
+            </p>
+            <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-xs text-amber-900 dark:text-amber-200 mb-4">
+                <p class="font-bold mb-2 flex items-center gap-1">
+                    <i class="fas fa-lightbulb"></i> Adblocker off kaise karein:
+                </p>
+                <ol class="list-decimal ml-4 space-y-1">
+                    <li>Browser me <b>AdBlock / uBlock / Brave Shield</b> extension off karo</li>
+                    <li>Is page ko <b>refresh</b> karo</li>
+                    <li>Fir <b>"Watch Ad to Unlock"</b> button dobara dabao</li>
+                </ol>
+            </div>
+            <p class="text-[11px] text-gray-500 dark:text-gray-400 text-center mb-4">
+                <i class="fas fa-info-circle"></i> Telegram user ho to Settings → Data & Storage → Ad blocking check karo
+            </p>
+            <div class="flex gap-2">
+                <button onclick="window.closeAdblockModal()" class="flex-1 py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-bold rounded-xl text-sm">Baad Me</button>
+                <button id="adblock-retry-btn" onclick="window.retryAdblockCheck()" class="flex-[2] py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2">
+                    <i class="fas fa-redo"></i> Try Again
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="toast" class="fixed top-6 left-1/2 transform -translate-x-1/2 -translate-y-24 opacity-0 z-[90] transition-all duration-300">
     <div class="bg-gray-800 dark:bg-gray-100 text-white dark:text-gray-900 py-3 px-6 rounded-full shadow-2xl flex items-center gap-3">
         <i class="fas fa-info-circle text-indigo-400"></i><span id="toast-message" class="text-sm font-medium"></span>
     </div>
@@ -264,6 +310,77 @@ function applyLanguage(lang) {
         if (file) { updateDetailButtonState(file); renderReviews(file); }
     }
     document.getElementById('language-modal').classList.add('hidden');
+}
+
+// ========== ADBLOCK DETECTION ==========
+function isMonetagReady() {
+    return typeof window[`show_${MONETAG_ZONE_ID}`] === 'function';
+}
+
+async function detectAdBlocker() {
+    // Check 1: Bait element (standard detection)
+    try {
+        const bait = document.createElement('div');
+        bait.className = 'ad-banner adsbox pub_300x250 text-ad ad-placeholder';
+        bait.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;';
+        bait.innerHTML = '&nbsp;';
+        document.body.appendChild(bait);
+        await new Promise(r => setTimeout(r, 150));
+        const blocked = bait.offsetHeight === 0 || bait.clientHeight === 0 || bait.offsetParent === null;
+        bait.remove();
+        if (blocked) return true;
+    } catch (e) { /* ignore */ }
+
+    // Check 2: Monetag SDK function (specific to our ad)
+    if (!isMonetagReady()) {
+        // Give it more time (slow networks)
+        for (let i = 0; i < 20; i++) {
+            await new Promise(r => setTimeout(r, 100));
+            if (isMonetagReady()) break;
+        }
+        if (!isMonetagReady()) return true;
+    }
+    return false;
+}
+
+window.showAdblockModal = () => {
+    document.getElementById('adblock-modal').classList.remove('hidden');
+    const box = document.getElementById('adblock-modal-box');
+    box.classList.remove('shake');
+    void box.offsetWidth;
+    box.classList.add('shake');
+};
+window.closeAdblockModal = () => {
+    document.getElementById('adblock-modal').classList.add('hidden');
+};
+window.retryAdblockCheck = async () => {
+    const btn = document.getElementById('adblock-retry-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Checking...';
+
+    const blocked = await detectAdBlocker();
+
+    if (!blocked) {
+        window.closeAdblockModal();
+        document.getElementById('adblock-notice').classList.add('hidden');
+        showToast('AdBlocker off ho gaya! Ab ads dekh sakte ho ✅');
+    } else {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-redo"></i> Still Blocked - Try Again';
+        const box = document.getElementById('adblock-modal-box');
+        box.classList.remove('shake');
+        void box.offsetWidth;
+        box.classList.add('shake');
+    }
+};
+
+async function runInitialAdblockCheck() {
+    const blocked = await detectAdBlocker();
+    if (blocked) {
+        document.getElementById('adblock-notice').classList.remove('hidden');
+    } else {
+        document.getElementById('adblock-notice').classList.add('hidden');
+    }
 }
 
 function showSkeletonLoader() {
@@ -533,13 +650,20 @@ document.getElementById('submit-review-btn').addEventListener('click', async () 
     } catch (e) { console.error("Save review error", e); showToast("DB save failed"); }
 });
 
+// ========== MONETAG REWARDED AD (with AdBlock detection) ==========
 async function showMonetagAd(ymid) {
-    const fnName = `show_${MONETAG_ZONE_ID}`;
-    const fn = window[fnName];
-    if (typeof fn !== 'function') {
-        throw new Error(`Monetag SDK not loaded (missing ${fnName}). Check <script> tag.`);
+    // Wait up to 3 seconds for SDK to load
+    let attempts = 0;
+    while (!isMonetagReady() && attempts < 30) {
+        await new Promise(r => setTimeout(r, 100));
+        attempts++;
     }
-    await fn({ ymid });
+    if (!isMonetagReady()) {
+        const err = new Error('ADBLOCK_DETECTED');
+        err.code = 'ADBLOCK';
+        throw err;
+    }
+    await window[`show_${MONETAG_ZONE_ID}`]({ ymid });
 }
 
 function updateDetailButtonState(file) {
@@ -583,6 +707,8 @@ window.unlockFile = async (id, req) => {
             document.getElementById('detail-downloads').textContent = formatNumber(file.downloads);
             renderFiles();
             renderHistory();
+            // Re-check adblock status — it might now be off
+            document.getElementById('adblock-notice').classList.add('hidden');
         } else {
             showToast(getText('progress_text', { count, req }));
             let cd = timerDuration;
@@ -598,8 +724,17 @@ window.unlockFile = async (id, req) => {
         }
     } catch (e) {
         console.error("Monetag ad error", e);
-        btn.disabled = false;
-        btn.innerHTML = `<i class="fas fa-exclamation-triangle"></i> <span>${getText('ad_failed')}</span>`;
+        if (e.code === 'ADBLOCK' || e.message === 'ADBLOCK_DETECTED') {
+            // Show the adblocker modal
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fas fa-lock"></i><span>${getText('unlock_btn')} (${count}/${req})</span>`;
+            document.getElementById('adblock-notice').classList.remove('hidden');
+            window.showAdblockModal();
+        } else {
+            // General ad error (network, etc.)
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fas fa-exclamation-triangle"></i> <span>${getText('ad_failed')}</span>`;
+        }
     }
 };
 
@@ -672,6 +807,8 @@ async function init() {
         await sb.auth.signInAnonymously();
     } catch (e) { console.warn("Anonymous auth failed (check Auth settings)", e); }
     await loadData();
+    // Detect adblocker on load (delayed to give SDK time to load)
+    setTimeout(runInitialAdblockCheck, 1500);
 }
 
 const savedLang = localStorage.getItem('userLanguage');
