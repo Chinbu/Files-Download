@@ -17,24 +17,40 @@
         </button>
     </header>
 
+    <!-- ===== EMAIL/PASSWORD LOGIN ===== -->
     <div id="admin-login" class="bg-white p-8 rounded-lg shadow-md max-w-md mx-auto text-center mt-20">
         <div class="bg-indigo-100 text-indigo-600 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl">
             <i class="fas fa-lock"></i>
         </div>
         <h2 class="text-2xl font-bold mb-4 text-gray-800">Admin Login</h2>
-        <p class="text-gray-500 mb-8 text-sm">Authorized Google account se sign in karein.</p>
-        <button id="google-login-btn" class="bg-white border border-gray-300 text-gray-700 font-semibold py-3 px-6 rounded-lg shadow-sm hover:bg-gray-50 transition duration-300 flex items-center justify-center w-full">
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" class="w-6 h-6 mr-3">
-            Google Se Sign in Karein
-        </button>
+        <p class="text-gray-500 mb-6 text-sm">Email aur password se sign in karein.</p>
+        
+        <div class="space-y-4 text-left">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input type="email" id="login-email" value="ingt6359@gmail.com" autocomplete="email"
+                       class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <input type="password" id="login-password" placeholder="Apna password daalein" autocomplete="current-password"
+                       class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+            </div>
+            <button id="email-login-btn" class="w-full bg-indigo-600 text-white font-semibold py-3 px-6 rounded-lg shadow-sm hover:bg-indigo-700 transition duration-300 flex items-center justify-center">
+                <i class="fas fa-sign-in-alt mr-2"></i> Sign In
+            </button>
+            <p id="login-error" class="hidden text-sm text-red-600 text-center mt-2"></p>
+        </div>
     </div>
 
     <div id="access-denied" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative max-w-md mx-auto text-center mt-10" role="alert">
         <strong class="font-bold block mb-1 text-lg"><i class="fas fa-ban"></i> Access Denied!</strong>
-        <span class="block sm:inline">Yeh Google account authorized nahi hai. Sirf <b>ingt6359@gmail.com</b> allowed hai.</span>
+        <span class="block sm:inline">Yeh account authorized nahi hai. Sirf <b>ingt6359@gmail.com</b> allowed hai.</span>
     </div>
 
+    <!-- ===== ADMIN CONTENT ===== -->
     <div id="admin-content" class="hidden">
+        <!-- Dashboard Stats -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
             <div class="bg-white p-6 rounded-lg shadow-md border-l-4 border-indigo-500 flex items-center justify-between">
                 <div><p class="text-sm text-gray-500 font-bold uppercase">Total Files</p><h3 id="stat-total-files" class="text-3xl font-extrabold text-gray-800 mt-1">0</h3></div>
@@ -56,6 +72,7 @@
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
             <div class="space-y-8 lg:col-span-1">
+                <!-- General Settings -->
                 <div class="bg-white p-6 rounded-lg shadow-md">
                     <h2 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2"><i class="fas fa-cog text-gray-500 mr-2"></i> General Settings</h2>
                     <div class="space-y-4">
@@ -83,6 +100,7 @@
                     </div>
                 </div>
 
+                <!-- Ads -->
                 <div class="bg-white p-6 rounded-lg shadow-md">
                     <h2 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2"><i class="fas fa-ad text-gray-500 mr-2"></i> Manage Banner Ads</h2>
                     <div class="space-y-4">
@@ -102,6 +120,7 @@
             </div>
 
             <div class="lg:col-span-2 space-y-8">
+                <!-- Sliders -->
                 <div class="bg-white p-6 rounded-lg shadow-md">
                     <h2 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2"><i class="fas fa-images text-gray-500 mr-2"></i> Manage Sliders</h2>
                     <div class="flex flex-col md:flex-row gap-3">
@@ -114,6 +133,7 @@
                     <div id="slider-list" class="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"></div>
                 </div>
 
+                <!-- Add File -->
                 <div class="bg-white p-6 rounded-lg shadow-md border border-indigo-100">
                     <h2 class="text-xl font-semibold text-indigo-800 mb-4 border-b border-indigo-100 pb-2"><i class="fas fa-upload mr-2"></i> Add New App/File</h2>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -145,6 +165,7 @@
             </div>
         </div>
 
+        <!-- File List -->
         <div class="bg-white p-6 rounded-lg shadow-md">
             <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2"><i class="fas fa-list text-gray-500 mr-2"></i> All Uploaded Files</h2>
             <div id="file-list" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"></div>
@@ -152,6 +173,7 @@
     </div>
 </div>
 
+<!-- Edit Modal -->
 <div id="edit-file-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-70 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         <div class="px-6 py-4 border-b flex justify-between items-center sticky top-0 bg-white z-10">
@@ -194,6 +216,7 @@
     </div>
 </div>
 
+<!-- Toast -->
 <div id="toast" class="fixed top-5 right-5 text-white py-3 px-6 rounded-lg shadow-2xl opacity-0 transform translate-x-10 transition-all duration-300 z-[100] flex items-center gap-3 font-medium">
     <i id="toast-icon" class="fas fa-info-circle"></i><p id="toast-message"></p>
 </div>
@@ -209,13 +232,17 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const adminLogin = document.getElementById('admin-login');
 const adminContent = document.getElementById('admin-content');
-const googleLoginBtn = document.getElementById('google-login-btn');
 const signOutBtn = document.getElementById('sign-out-btn');
 const accessDenied = document.getElementById('access-denied');
+const loginEmailInput = document.getElementById('login-email');
+const loginPasswordInput = document.getElementById('login-password');
+const emailLoginBtn = document.getElementById('email-login-btn');
+const loginError = document.getElementById('login-error');
 const fileList = document.getElementById('file-list');
 const sliderList = document.getElementById('slider-list');
 const editModal = document.getElementById('edit-file-modal');
 
+// ---------- AUTH STATE ----------
 function handleUser(user) {
     if (user && user.email === ADMIN_EMAIL) {
         adminLogin.classList.add('hidden');
@@ -234,11 +261,44 @@ function handleUser(user) {
 sb.auth.getSession().then(({ data: { session } }) => handleUser(session?.user));
 sb.auth.onAuthStateChange((_event, session) => handleUser(session?.user));
 
-googleLoginBtn.addEventListener('click', async () => {
-    await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.href } });
+// ---------- EMAIL/PASSWORD LOGIN ----------
+emailLoginBtn.addEventListener('click', async () => {
+    const email = loginEmailInput.value.trim();
+    const password = loginPasswordInput.value;
+
+    loginError.classList.add('hidden');
+    if (!email || !password) {
+        loginError.textContent = 'Email aur password dono zaroori hain.';
+        loginError.classList.remove('hidden');
+        return;
+    }
+
+    emailLoginBtn.disabled = true;
+    emailLoginBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Signing in...';
+
+    const { error } = await sb.auth.signInWithPassword({ email, password });
+
+    if (error) {
+        console.error(error);
+        loginError.textContent = error.message;
+        loginError.classList.remove('hidden');
+        emailLoginBtn.disabled = false;
+        emailLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt mr-2"></i> Sign In';
+        return;
+    }
+
+    emailLoginBtn.disabled = false;
+    emailLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt mr-2"></i> Sign In';
 });
+
+// Enter key se bhi login ho jaye
+loginPasswordInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') emailLoginBtn.click();
+});
+
 signOutBtn.addEventListener('click', async () => { await sb.auth.signOut(); });
 
+// ---------- TOAST ----------
 function showToast(message, type = 'default') {
     const toast = document.getElementById('toast');
     const icon = document.getElementById('toast-icon');
@@ -275,6 +335,7 @@ async function loadAdminData() {
     await loadAdminFiles();
 }
 
+// ---------- SETTINGS ----------
 document.getElementById('save-settings-btn').addEventListener('click', (e) => {
     const duration = parseInt(document.getElementById('timer-duration-setting').value);
     const appTitle = document.getElementById('app-title-setting').value;
@@ -305,6 +366,7 @@ async function loadAdminSettings() {
     }
 }
 
+// ---------- ADS ----------
 document.getElementById('save-ads-btn').addEventListener('click', (e) => {
     const adData = {
         id: 'ads',
@@ -326,6 +388,7 @@ async function loadAdminAds() {
     }
 }
 
+// ---------- SLIDERS ----------
 document.getElementById('add-slider-btn').addEventListener('click', (e) => {
     const imageUrl = document.getElementById('slider-image-url').value;
     if (!imageUrl) return showToast("Slider Image URL zaroori hai.", 'error');
@@ -364,6 +427,7 @@ sliderList.addEventListener('click', async (e) => {
     }
 });
 
+// ---------- FILES ----------
 document.getElementById('add-file-btn').addEventListener('click', (e) => {
     const title = document.getElementById('file-title').value;
     const thumbnailUrl = document.getElementById('file-thumbnail-url').value;
