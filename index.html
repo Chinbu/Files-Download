@@ -32,7 +32,7 @@
 
 <div id="adblock-notice" class="hidden bg-red-500 text-white text-xs py-2 px-4 text-center sticky top-0 z-[55] shadow-md">
     <i class="fas fa-exclamation-triangle mr-1"></i>
-    <span>AdBlocker detected — ads won't load. Please disable it to unlock downloads.</span>
+    <span>Ads are failing repeatedly — looks like an AdBlocker is on. Please disable it to unlock downloads.</span>
     <button onclick="window.showAdblockModal()" class="ml-2 underline font-bold">How to fix</button>
 </div>
 
@@ -179,6 +179,7 @@
     </div>
 </div>
 
+<!-- ADBLOCK MODAL (shows after 2 consecutive ad failures) -->
 <div id="adblock-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-[85] flex items-center justify-center p-4">
     <div id="adblock-modal-box" class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
         <div class="bg-gradient-to-br from-red-500 to-red-600 p-6 text-center text-white">
@@ -186,28 +187,28 @@
                 <i class="fas fa-shield-alt text-3xl"></i>
             </div>
             <h3 class="text-xl font-bold mb-1">AdBlocker Detected!</h3>
-            <p class="text-xs text-red-100">Ads load nahi ho rahe</p>
+            <p class="text-xs text-red-100">Ads 2 baar fail ho gaye</p>
         </div>
         <div class="p-5">
             <p class="text-sm text-gray-700 dark:text-gray-300 mb-4 text-center">
-                Downloads unlock karne ke liye <b>ads dekhna zaroori</b> hai. Aapke device par adblocker active hai jiski wajah se ads load nahi ho pa rahe.
+                Aapke ads 2 baar consecutively fail ho gaye. Ye <b>AdBlocker</b> ki wajah se ho sakta hai. Downloads unlock karne ke liye pehle adblocker <b>off</b> karo, fir retry karo.
             </p>
             <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-xs text-amber-900 dark:text-amber-200 mb-4">
                 <p class="font-bold mb-2 flex items-center gap-1"><i class="fas fa-lightbulb"></i> Adblocker off kaise karein:</p>
                 <ol class="list-decimal ml-4 space-y-1">
-                    <li>Agar aap <b>Telegram Desktop/Web</b> par ho to browser extension (AdBlock/uBlock) off karo</li>
-                    <li>Agar aap <b>Telegram Mobile</b> par ho to phone ki <b>Private DNS</b> ya adblocking app check karo</li>
-                    <li>App ko <b>refresh</b> karo</li>
+                    <li><b>Telegram Desktop / Web</b> par ho → browser extension (AdBlock / uBlock) off karo</li>
+                    <li><b>Telegram Mobile</b> par ho → phone ki <b>Private DNS</b> ya adblock app (AdGuard/NextDNS) off karo</li>
+                    <li>App ko <b>refresh / reopen</b> karo</li>
                     <li>Fir <b>"Watch Ad to Unlock"</b> button dobara dabao</li>
                 </ol>
             </div>
             <p class="text-[11px] text-gray-500 dark:text-gray-400 text-center mb-4">
-                <i class="fas fa-info-circle"></i> Telegram Mobile apps mein browser extensions nahi hote, lekin system-level adblockers (jaise AdGuard, NextDNS) effect kar sakte hain.
+                <i class="fas fa-info-circle"></i> Agar aapne adblocker on nahi kiya, to ye temporary ad network issue bhi ho sakta hai. Fir se retry karo.
             </p>
             <div class="flex gap-2">
                 <button onclick="window.closeAdblockModal()" class="flex-1 py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-bold rounded-xl text-sm">Baad Me</button>
                 <button id="adblock-retry-btn" onclick="window.retryAdblockCheck()" class="flex-[2] py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2">
-                    <i class="fas fa-redo"></i> Try Again
+                    <i class="fas fa-redo"></i> Samajh Gaya, Retry
                 </button>
             </div>
         </div>
@@ -227,6 +228,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_-PPeh15CPZyiwAQBVt1AVQ_xlTug8PC';
 const MONETAG_ZONE_ID = '12233684';
 const UNLOCK_VALIDITY_HOURS = 24;
 const UNLOCK_VALIDITY_MS = UNLOCK_VALIDITY_HOURS * 60 * 60 * 1000;
+const ADBLOCK_FAILURE_THRESHOLD = 2; // 2 baar fail = adblocker suspect
 // ================================
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -237,6 +239,7 @@ let currentLang = 'en';
 let currentFileId = null;
 let userRating = 0;
 let slideInterval = null;
+let adFailureCounts = {}; // { fileId: consecutiveFailures }
 
 let tgUser = { id: null, name: "Guest User" };
 try {
@@ -303,57 +306,13 @@ function formatExpiryTime(hoursRemaining, minutesRemaining) {
     return `<1m`;
 }
 
-// ========== ADBLOCK DETECTION (Telegram‑safe) ==========
-function isMonetagReady() { return typeof window[`show_${MONETAG_ZONE_ID}`] === 'function'; }
-
-async function showMonetagAd(ymid) {
-    // Wait up to 3s for SDK to load
-    let attempts = 0;
-    while (!isMonetagReady() && attempts < 30) {
-        await new Promise(r => setTimeout(r, 100));
-        attempts++;
-    }
-    if (!isMonetagReady()) {
-        const err = new Error('ADBLOCK_DETECTED');
-        err.code = 'ADBLOCK';
-        throw err;
-    }
-    try {
-        // Try to show ad – this will reject if blocked
-        await window[`show_${MONETAG_ZONE_ID}`]({ ymid });
-    } catch (e) {
-        // Monetag rejects with "Empty feed" or similar when ads are blocked
-        if (e.message && (e.message.toLowerCase().includes('empty') || e.message.toLowerCase().includes('block') || e.message.toLowerCase().includes('fail'))) {
-            const err = new Error('ADBLOCK_DETECTED');
-            err.code = 'ADBLOCK';
-            throw err;
-        }
-        throw e; // other errors (timeout, etc.) – not necessarily adblock
-    }
+// ========== ADBLOCK UI HELPERS ==========
+function showAdblockNotice() {
+    document.getElementById('adblock-notice').classList.remove('hidden');
 }
-
-async function detectAdBlocker() {
-    // First, try a preload – if it rejects, likely adblocker
-    if (isMonetagReady()) {
-        try {
-            await window[`show_${MONETAG_ZONE_ID}`]({ type: 'preload' });
-        } catch (e) {
-            // If preload fails with empty feed, assume adblocker
-            if (e.message && (e.message.toLowerCase().includes('empty') || e.message.toLowerCase().includes('block'))) {
-                return true;
-            }
-        }
-    } else {
-        // SDK not loaded after 3s – could be network or adblocker
-        for (let i = 0; i < 30; i++) {
-            await new Promise(r => setTimeout(r, 100));
-            if (isMonetagReady()) break;
-        }
-        if (!isMonetagReady()) return true;
-    }
-    return false;
+function hideAdblockNotice() {
+    document.getElementById('adblock-notice').classList.add('hidden');
 }
-
 window.showAdblockModal = () => {
     document.getElementById('adblock-modal').classList.remove('hidden');
     const box = document.getElementById('adblock-modal-box');
@@ -361,33 +320,15 @@ window.showAdblockModal = () => {
     void box.offsetWidth;
     box.classList.add('shake');
 };
-window.closeAdblockModal = () => document.getElementById('adblock-modal').classList.add('hidden');
-window.retryAdblockCheck = async () => {
-    const btn = document.getElementById('adblock-retry-btn');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Checking...';
-    const blocked = await detectAdBlocker();
-    if (!blocked) {
-        window.closeAdblockModal();
-        document.getElementById('adblock-notice').classList.add('hidden');
-        showToast('AdBlocker off ho gaya! Ab ads dekh sakte ho ✅');
-    } else {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-redo"></i> Still Blocked - Try Again';
-        const box = document.getElementById('adblock-modal-box');
-        box.classList.remove('shake');
-        void box.offsetWidth;
-        box.classList.add('shake');
-    }
+window.closeAdblockModal = () => {
+    document.getElementById('adblock-modal').classList.add('hidden');
 };
-
-async function runInitialAdblockCheck() {
-    // Wait for SDK to load, then try preload
-    setTimeout(async () => {
-        const blocked = await detectAdBlocker();
-        document.getElementById('adblock-notice').classList.toggle('hidden', !blocked);
-    }, 1000);
-}
+window.retryAdblockCheck = () => {
+    // Reset failure counter for current file so user gets 2 fresh tries
+    if (currentFileId) adFailureCounts[currentFileId] = 0;
+    window.closeAdblockModal();
+    showToast('Adblocker off karke dobara try karo');
+};
 
 // ========== DARK MODE ==========
 window.toggleDarkMode = () => {
@@ -406,8 +347,8 @@ if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && w
 
 const translations = {
     en: { main_title:"XBI TECH", main_subtitle:"Watch Ads, Unlock & Download!", search_placeholder:"Search files...", available_files:"Available Files", unlock_btn:"Watch Ad to Unlock", loading_ad:"Loading Ad...", wait_text:"Please wait {cd}s...", progress_text:"Progress: {count}/{req} Ads watched", unlocked_msg:"Unlocked Successfully!", ad_failed:"Ad Failed. Retry", download_default:"Download", nav_home:"Home", nav_history:"History", history_title:"Downloads", history_subtitle:"Files you have unlocked", empty_history:"No files unlocked yet.", screenshots:"Screenshots", about_app:"About this file", reviews:"Ratings & Reviews", rate_this:"Rate this file", submit_review:"Submit Review", update_review:"Update Review", no_reviews:"No reviews yet. Be the first to review!" },
-    hi: { main_title:"वेबऐप सीखो", main_subtitle:"विज्ञापन देखें और मुफ्त डाउनलोड करें!", search_placeholder:"फाइलें खोजें...", available_files:"उपलब्ध फाइलें", unlock_btn:"अनलॉक के लिए विज्ञापन देखें", loading_ad:"विज्ञापन लोड हो रहा है...", wait_text:"कृपया रुकें {cd}s...", progress_text:"प्रगति: {count}/{req} विज्ञापन देखे गए", unlocked_msg:"फाइल अनलॉक हो गई!", ad_failed:"विफल। पुनः प्रयास करें", download_default:"डाउनलोड", nav_home:"होम", nav_history:"इतिहास", history_title:"डाउनलोड्स", history_subtitle:"आपकी अनलॉक की गई फाइलें", empty_history:"अभी तक कोई फाइल अनलॉक नहीं की गई।", screenshots:"स्क्रीनशॉट्स", about_app:"इस फाइल के बारे में", reviews:"रेटिंग और समीक्षाएं", rate_this:"इस फाइल को रेट करें", submit_review:"समीक्षा जमा करें", update_review:"समीक्षा अपडेट करें", no_reviews:"अभी तक कोई समीक्षा नहीं। पहली समीक्षा लिखें!" },
-    bn: { main_title:"ওয়েবঅ্যাপ শিখুন", main_subtitle:"বিজ্ঞাপন দেখুন এবং ডাউনলোড করুন!", search_placeholder:"ফাইল খুঁজুন...", available_files:"উপলব্ধ ফাইল", unlock_btn:"আনলক করতে বিজ্ঞাপন দেখুন", loading_ad:"বিজ্ঞাপন লোড হচ্ছে...", wait_text:"অপেক্ষা করুন {cd}s...", progress_text:"অগ্রগতি: {count}/{req} বিজ্ঞাপন দেখা হয়েছে", unlocked_msg:"আনলক সফল হয়েছে!", ad_failed:"ব্যর্থ। আবার চেষ্টা করুন", download_default:"ডাউনলোড", nav_home:"হোম", nav_history:"ইতিহাস", history_title:"ডাউনলোডস", history_subtitle:"আপনার আনলক করা ফাইলগুলি", empty_history:"এখনও কোনও ফাইল আনলক করা হয়নি।", screenshots:"স্ক্রিনশট", about_app:"এই ফাইল সম্পর্কে", reviews:"রেটিং এবং পর্যালোচনা", rate_this:"এই ফাইলটি রেট করুন", submit_review:"পর্যালোচনা জমা দিন", update_review:"পর্যালোচনা আপডেট করুন", no_reviews:"এখনও কোন পর্যালোচনা নেই। প্রথম হন!" }
+    hi: { main_title:"XBI TECH", main_subtitle:"विज्ञापन देखें और मुफ्त डाउनलोड करें!", search_placeholder:"फाइलें खोजें...", available_files:"उपलब्ध फाइलें", unlock_btn:"अनलॉक के लिए विज्ञापन देखें", loading_ad:"विज्ञापन लोड हो रहा है...", wait_text:"कृपया रुकें {cd}s...", progress_text:"प्रगति: {count}/{req} विज्ञापन देखे गए", unlocked_msg:"फाइल अनलॉक हो गई!", ad_failed:"विफल। पुनः प्रयास करें", download_default:"डाउनलोड", nav_home:"होम", nav_history:"इतिहास", history_title:"डाउनलोड्स", history_subtitle:"आपकी अनलॉक की गई फाइलें", empty_history:"अभी तक कोई फाइल अनलॉक नहीं की गई।", screenshots:"स्क्रीनशॉट्स", about_app:"इस फाइल के बारे में", reviews:"रेटिंग और समीक्षाएं", rate_this:"इस फाइल को रेट करें", submit_review:"समीक्षा जमा करें", update_review:"समीक्षा अपडेट करें", no_reviews:"अभी तक कोई समीक्षा नहीं। पहली समीक्षा लिखें!" },
+    bn: { main_title:"XBI TECH", main_subtitle:"বিজ্ঞাপন দেখুন এবং ডাউনলোড করুন!", search_placeholder:"ফাইল খুঁজুন...", available_files:"উপলব্ধ ফাইল", unlock_btn:"আনলক করতে বিজ্ঞাপন দেখুন", loading_ad:"বিজ্ঞাপন লোড হচ্ছে...", wait_text:"অপেক্ষা করুন {cd}s...", progress_text:"অগ্রগতি: {count}/{req} বিজ্ঞাপন দেখা হয়েছে", unlocked_msg:"আনলক সফল হয়েছে!", ad_failed:"ব্যর্থ। আবার চেষ্টা করুন", download_default:"ডাউনলোড", nav_home:"হোম", nav_history:"ইতিহাস", history_title:"ডাউনলোডস", history_subtitle:"আপনার আনলক করা ফাইলগুলি", empty_history:"এখনও কোনও ফাইল আনলক করা হয়নি।", screenshots:"স্ক্রিনশট", about_app:"এই ফাইল সম্পর্কে", reviews:"রেটিং এবং পর্যালোচনা", rate_this:"এই ফাইলটি রেট করুন", submit_review:"পর্যালোচনা জমা দিন", update_review:"পর্যালোচনা আপডেট করুন", no_reviews:"এখনও কোন পর্যালোচনা নেই। প্রথম হন!" }
 };
 
 function getText(key, params = {}) {
@@ -697,6 +638,21 @@ document.getElementById('submit-review-btn').addEventListener('click', async () 
     } catch (e) { console.error("Save review error", e); showToast("DB save failed"); }
 });
 
+// ========== MONETAG AD ==========
+async function showMonetagAd(ymid) {
+    let attempts = 0;
+    while (typeof window[`show_${MONETAG_ZONE_ID}`] !== 'function' && attempts < 30) {
+        await new Promise(r => setTimeout(r, 100));
+        attempts++;
+    }
+    if (typeof window[`show_${MONETAG_ZONE_ID}`] !== 'function') {
+        const err = new Error('SDK_NOT_LOADED');
+        err.code = 'SDK_NOT_LOADED';
+        throw err;
+    }
+    await window[`show_${MONETAG_ZONE_ID}`]({ ymid });
+}
+
 // ===== DETAIL BUTTON STATE =====
 function updateDetailButtonState(file) {
     const req = parseInt(file.required_ads) || 5;
@@ -724,13 +680,20 @@ function updateDetailButtonState(file) {
     }
 }
 
+// ===== UNLOCK (with failure-based adblock detection) =====
 window.unlockFile = async (id, req) => {
     const btn = document.getElementById('unlock-action-btn');
     if (!btn || btn.disabled) return;
     btn.disabled = true;
     btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span>${getText('loading_ad')}</span>`;
+
     try {
         await showMonetagAd(tgUser.id);
+
+        // ✅ SUCCESS — reset failure counter + hide adblock notice
+        adFailureCounts[id] = 0;
+        hideAdblockNotice();
+
         const state = getUnlockState(id, req);
         let newCount = state.count + 1;
         saveUnlockProgress(id, newCount, req);
@@ -747,7 +710,6 @@ window.unlockFile = async (id, req) => {
             document.getElementById('detail-downloads').textContent = formatNumber(file.downloads);
             renderFiles();
             renderHistory();
-            document.getElementById('adblock-notice').classList.add('hidden');
         } else {
             showToast(getText('progress_text', { count: newCount, req }));
             let cd = timerDuration;
@@ -762,16 +724,20 @@ window.unlockFile = async (id, req) => {
             }, 1000);
         }
     } catch (e) {
-        console.error("Monetag ad error", e);
-        if (e.code === 'ADBLOCK' || e.message === 'ADBLOCK_DETECTED') {
-            btn.disabled = false;
-            const state = getUnlockState(id, req);
-            btn.innerHTML = `<i class="fas fa-lock"></i><span>${getText('unlock_btn')} (${state.count}/${req})</span>`;
-            document.getElementById('adblock-notice').classList.remove('hidden');
+        // ❌ FAILURE — increment counter
+        adFailureCounts[id] = (adFailureCounts[id] || 0) + 1;
+        const failures = adFailureCounts[id];
+        console.warn(`Ad failed for file ${id}. Consecutive failures: ${failures}`, e);
+
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fas fa-exclamation-triangle"></i> <span>${getText('ad_failed')}</span>`;
+
+        // 2nd consecutive failure → show adblocker notice + modal
+        if (failures >= ADBLOCK_FAILURE_THRESHOLD) {
+            showAdblockNotice();
             window.showAdblockModal();
         } else {
-            btn.disabled = false;
-            btn.innerHTML = `<i class="fas fa-exclamation-triangle"></i> <span>${getText('ad_failed')}</span>`;
+            showToast(getText('ad_failed'));
         }
     }
 };
@@ -849,8 +815,7 @@ async function init() {
     try { await sb.auth.signInAnonymously(); }
     catch (e) { console.warn("Anonymous auth failed", e); }
     await loadData();
-    // Initial adblock check after SDK load
-    setTimeout(runInitialAdblockCheck, 1500);
+    // ❌ NO initial adblock check — detection only on ad failure
 }
 
 const savedLang = localStorage.getItem('userLanguage');
